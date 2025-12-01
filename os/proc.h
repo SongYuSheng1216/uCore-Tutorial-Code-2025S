@@ -38,6 +38,12 @@ struct proc {
 	/*
 	* LAB1: you may need to add some new fields here
 	*/
+	int sys_write_count;
+	int sys_exit_count;
+	int sys_sched_count;
+	int sys_gettimeofday_count;
+	int sys_trace_count;
+
 };
 
 struct proc *curr_proc();

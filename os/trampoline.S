@@ -67,7 +67,7 @@ uservec:
         csrr t1, sepc
         sd t1, 24(a0)
 
-        ld sp, 8(a0)
+        ld sp, 8(a0)    // 切换内核栈
         ld tp, 32(a0)
         ld t1, 0(a0)
         # csrw satp, t1

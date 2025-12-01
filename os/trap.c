@@ -42,7 +42,7 @@ void unknown_trap()
 // called from trampoline.S
 //
 void usertrap()
-{
+	{
 	set_kerneltrap();
 	struct trapframe *trapframe = curr_proc()->trapframe;
 
@@ -56,7 +56,7 @@ void usertrap()
 		case SupervisorTimer:
 			tracef("time interrupt!\n");
 			set_next_timer();
-			yield();
+			yield();	// 这是S态时钟中断的yield
 			break;
 		default:
 			unknown_trap();
@@ -66,7 +66,7 @@ void usertrap()
 		switch (cause) {
 		case UserEnvCall:
 			trapframe->epc += 4;
-			syscall();
+			syscall();	// 这里是用户程序主动yield，为环境调用的yield
 			break;
 		case StoreMisaligned:
 		case StorePageFault:
@@ -118,3 +118,4 @@ void usertrapret()
 	// uint64 satp = MAKE_SATP(p->pagetable);
 	userret((uint64)trapframe);
 }
+

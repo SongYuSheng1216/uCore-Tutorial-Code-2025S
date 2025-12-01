@@ -224,7 +224,7 @@ static inline uint64 r_mcounteren()
 	return x;
 }
 
-// machine-mode cycle counter
+// machine-mode cycle couner
 static inline uint64 r_time()
 {
 	uint64 x;

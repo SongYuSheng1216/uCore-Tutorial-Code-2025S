@@ -34,6 +34,11 @@ void proc_init(void)
 		/*
 		* LAB1: you may need to initialize your new fields of proc here
 		*/
+		p->sys_exit_count = 0;
+		p->sys_gettimeofday_count = 0;
+		p->sys_sched_count = 0;
+		p->sys_trace_count = 0;
+		p->sys_write_count = 0;
 	}
 	idle.kstack = (uint64)boot_stack_top;
 	idle.pid = 0;
@@ -96,6 +101,12 @@ void scheduler(void)
 // be proc->intena and proc->noff, but that would
 // break in the few places where a lock is held but
 // there's no process.
+// 切换到调度器。必须仅持有 p->lock 锁，
+// 且已修改 proc->state（进程状态）。保存并恢复
+// 中断使能标志（intena），因为 intena 是当前内核线程的属性，而非该 CPU 的属性。
+// 理论上它应对应 proc->intena 和 proc->noff，
+// 但这会在少数 “持有锁但无对应进程” 的场景下失效。
+
 void sched(void)
 {
 	struct proc *p = curr_proc();

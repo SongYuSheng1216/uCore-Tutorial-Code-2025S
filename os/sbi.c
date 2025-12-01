@@ -5,6 +5,7 @@ const uint64 SBI_CONSOLE_PUTCHAR = 1;
 const uint64 SBI_CONSOLE_GETCHAR = 2;
 const uint64 SBI_CLEAR_IPI = 3;
 const uint64 SBI_SEND_IPI = 4;
+// Inter-processor interrupt 处理器间中断
 const uint64 SBI_REMOTE_FENCE_I = 5;
 const uint64 SBI_REMOTE_SFENCE_VMA = 6;
 const uint64 SBI_REMOTE_SFENCE_VMA_ASID = 7;

@@ -39,6 +39,47 @@ uint64 sys_gettimeofday(TimeVal *val, int _tz)
 /*
 * LAB1: you may need to define sys_trace here
 */
+// enum trace_function {
+// 	TRACE_READ,
+// 	TRACE_WRITE,
+// 	TRACE_SYSCALL,
+// };
+// int sys_write_count = 0;
+// int sys_exit_count = 0;
+// int sys_sched_count = 0;
+// int sys_gettimeofday_count = 0;
+// int sys_trace_count = 0;
+
+int sys_trace(int trace_request, unsigned long id, uint8 data)
+{
+	switch (trace_request) {
+		case TRACE_READ:
+			return *((uint8*) id);
+		case TRACE_WRITE:
+			*((uint8*)id) = data;
+			return 0;
+		case TRACE_SYSCALL:
+			if(id == SYS_write){
+				return curr_proc()->sys_write_count;
+			}else if(id == SYS_exit){
+				return curr_proc()->sys_exit_count;
+			}else if(id == SYS_sched_yield){
+				return curr_proc()->sys_sched_count;
+			}else if(id == SYS_gettimeofday){
+				return curr_proc()->sys_gettimeofday_count;
+			}else if(id == SYS_trace){
+				return curr_proc()->sys_trace_count;
+			}else{
+				panic("EEEEEEEEEEEERROR!");
+			}
+			break;
+		default:
+			return -1;
+			// panic("unknown trace_request %d", trace_request);
+			// break;
+	}
+	return -1;
+}
 
 extern char trap_page[];
 
@@ -55,20 +96,28 @@ void syscall()
 	*/
 	switch (id) {
 	case SYS_write:
+		curr_proc()->sys_write_count++;
 		ret = sys_write(args[0], (char *)args[1], args[2]);
 		break;
 	case SYS_exit:
+		curr_proc()->sys_exit_count++;
 		sys_exit(args[0]);
 		// __builtin_unreachable();
 	case SYS_sched_yield:
+		curr_proc()->sys_sched_count++;
 		ret = sys_sched_yield();
 		break;
 	case SYS_gettimeofday:
+		curr_proc()->sys_gettimeofday_count++;
 		ret = sys_gettimeofday((TimeVal *)args[0], args[1]);
 		break;
 	/*
 	* LAB1: you may need to add SYS_trace case here
-	*/
+	*/	
+	case SYS_trace:
+		curr_proc()->sys_trace_count++;
+		ret = sys_trace(args[0], args[1], args[2]);
+		break;
 	default:
 		ret = -1;
 		errorf("unknown syscall %d", id);
