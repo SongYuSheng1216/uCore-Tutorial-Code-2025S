@@ -15,6 +15,7 @@ struct proc idle;
 int threadid()
 {
 	return curr_proc()->pid;
+	// 
 }
 
 struct proc *curr_proc()
