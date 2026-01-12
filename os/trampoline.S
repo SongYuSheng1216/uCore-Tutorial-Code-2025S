@@ -26,7 +26,7 @@ uservec:
 
 	# swap a0 and sscratch
         # so that a0 is TRAPFRAME
-        csrrw a0, sscratch, a0
+        csrrw a0, sscratch, a0  // 这里获得了自己线程的trapframe结构的地址
 
         # save the user registers in TRAPFRAME
         sd ra, 40(a0)
@@ -61,16 +61,16 @@ uservec:
         sd t6, 280(a0)
 
         csrr t0, sscratch
-        sd t0, 112(a0)
+        sd t0, 112(a0)  // 保存所有用户态寄存器值
         csrr t1, sepc
-        sd t1, 24(a0)
-        ld sp, 8(a0)
+        sd t1, 24(a0)   // 保存epc进陷阱帧
+        ld sp, 8(a0)    // 切换为内核栈
         ld tp, 32(a0)
-        ld t0, 16(a0)
+        ld t0, 16(a0)   // 设置好pc
         ld t1, 0(a0)
-        csrw satp, t1
-        sfence.vma zero, zero
-        jr t0
+        csrw satp, t1   // 切换页表 
+        sfence.vma zero, zero   // 刷新所有TLB
+        jr t0   // 跳转stvec
 
 .globl userret
 userret:
@@ -81,12 +81,12 @@ userret:
         # a1: user page table, for satp.
 
         # switch to the user page table.
-        csrw satp, a1
-        sfence.vma zero, zero
+        csrw satp, a1   // 切换回用户页表
+        sfence.vma zero, zero   // 刷新TLB
 
         # put the saved user a0 in sscratch, so we
         # can swap it with our a0 (TRAPFRAME) in the last step.
-        ld t0, 112(a0)
+        ld t0, 112(a0)  
         csrw sscratch, t0
 
         # restore all but a0 from TRAPFRAME
@@ -119,7 +119,7 @@ userret:
         ld t3, 256(a0)
         ld t4, 264(a0)
         ld t5, 272(a0)
-        ld t6, 280(a0)
+        ld t6, 280(a0)  // 恢复所有用户态寄存器
 
 	# restore user a0, and save TRAPFRAME in sscratch
         csrrw a0, sscratch, a0

@@ -29,6 +29,7 @@ void kinit()
 // which normally should have been returned by a
 // call to kalloc().  (The exception is when
 // initializing the allocator; see kinit above.)
+// 回收掉4KB实际物理内存地址
 void kfree(void *pa)
 {
 	struct linklist *l;
@@ -38,7 +39,7 @@ void kfree(void *pa)
 	// Fill with junk to catch dangling refs.
 	memset(pa, 1, PGSIZE);
 	l = (struct linklist *)pa;
-	l->next = kmem.freelist;
+	l->next = kmem.freelist;	// // 空闲地址页加入链表为放在链表头，kmem指向链表头的第一个空闲地址页
 	kmem.freelist = l;
 }
 

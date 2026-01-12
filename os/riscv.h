@@ -302,7 +302,7 @@ static inline void sfence_vma()
 // shift a physical address to the right place for a PTE.
 #define PA2PTE(pa) ((((uint64)pa) >> 12) << 10)
 
-#define PTE2PA(pte) (((pte) >> 10) << 12)
+#define PTE2PA(pte) (((pte) >> 10) << 12)// 获得下一级页表的物理首地址/获得物理页的首地址
 
 #define PTE_FLAGS(pte) ((pte)&0x3FF)
 
@@ -310,6 +310,7 @@ static inline void sfence_vma()
 #define PXMASK 0x1FF // 9 bits
 #define PXSHIFT(level) (PGSHIFT + (9 * (level)))
 #define PX(level, va) ((((uint64)(va)) >> PXSHIFT(level)) & PXMASK)
+// PX是获取每个level的VPN
 
 // one beyond the highest possible virtual address.
 // MAXVA is actually one bit less than the max allowed by
@@ -317,8 +318,8 @@ static inline void sfence_vma()
 // that have the high bit set.
 #define MAXVA (1L << (9 + 9 + 9 + 12 - 1))
 
-typedef uint64 pte_t;
-typedef uint64 pde_t;
+typedef uint64 pte_t;	// page table entry(页表项，叶节点)
+typedef uint64 pde_t;	// page directory Entry(页目录项，非叶节点)
 typedef uint64 *pagetable_t; // 512 PTEs
 
 #endif // RISCV_H

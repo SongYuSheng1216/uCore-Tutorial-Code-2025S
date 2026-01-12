@@ -25,10 +25,11 @@ void loader_init()
 
 pagetable_t bin_loader(uint64 start, uint64 end, struct proc *p)
 {
+	// int mappages(pagetable_t pagetable, uint64 va, uint64 size, uint64 pa, int perm)
 	pagetable_t pg = uvmcreate();
 	if (mappages(pg, TRAPFRAME, PGSIZE, (uint64)p->trapframe,
-		     PTE_R | PTE_W) < 0) {
-		panic("mappages fail");
+		     PTE_R | PTE_W) < 0) {	// 将trapframe虚拟地址 映射到p进程的trapframe结构
+		panic("mappages fail");		// 因此此时P进程的页表就能通过trapframe虚拟地址获得trapframe结构
 	}
 	if (!PGALIGNED(start)) {
 		panic("user program not aligned, start = %p", start);
@@ -41,23 +42,28 @@ pagetable_t bin_loader(uint64 start, uint64 end, struct proc *p)
 	end = PGROUNDUP(end);
 	uint64 length = end - start;
 	if (mappages(pg, BASE_ADDRESS, length, start,
-		     PTE_U | PTE_R | PTE_W | PTE_X) != 0) {
+		     PTE_U | PTE_R | PTE_W | PTE_X) != 0) {	// 映射app的代码
 		panic("mappages fail");
 	}
-	p->pagetable = pg;
-	uint64 ustack_bottom_vaddr = BASE_ADDRESS + length + PAGE_SIZE;
+	p->pagetable = pg;	// 设置p进程的页表为pg
+	uint64 ustack_bottom_vaddr = BASE_ADDRESS + length + PAGE_SIZE;// 栈空间的最低地址（栈顶方向） 
+	// 加一个page_size 可能是为了
+	// 1. 保护页，防止栈开辟到代码/数据段了
+	// 2. 对齐要求
+	// 3. 为栈的元数据预留空间（环境变量指针，命令行参数，辅助向量）
 	if (USTACK_SIZE != PAGE_SIZE) {
 		// Fix in ch5
 		panic("Unsupported");
 	}
 	mappages(pg, ustack_bottom_vaddr, USTACK_SIZE, (uint64)kalloc(),
-		 PTE_U | PTE_R | PTE_W | PTE_X);
+		 PTE_U | PTE_R | PTE_W | PTE_X);	// 映射用户栈
+	// 设置进程
 	p->ustack = ustack_bottom_vaddr;
 	p->trapframe->epc = BASE_ADDRESS;
 	p->trapframe->sp = p->ustack + USTACK_SIZE;
 	p->max_page = PGROUNDUP(p->ustack + USTACK_SIZE - 1) / PAGE_SIZE;
-	p->program_brk = p->ustack + USTACK_SIZE;
-        p->heap_bottom = p->ustack + USTACK_SIZE;
+	p->program_brk = p->ustack + USTACK_SIZE;	// 不了解
+    p->heap_bottom = p->ustack + USTACK_SIZE;	// 很奇怪的名字
 	return pg;
 }
 
