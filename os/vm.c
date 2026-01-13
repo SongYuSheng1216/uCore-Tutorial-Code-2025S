@@ -89,7 +89,7 @@ uint64 walkaddr(pagetable_t pagetable, uint64 va)
 		return 0;
 	if ((*pte & PTE_V) == 0)
 		return 0;
-	if ((*pte & PTE_U) == 0)	// 疑惑？等于0，不就意味着S-mode可以使用
+	if ((*pte & PTE_U) == 0)	// 等于0，U-mode不可用
 		return 0;
 	pa = PTE2PA(*pte);	// 获得数据所在的物理页首地址，没有考虑offset
 	return pa;
@@ -148,6 +148,7 @@ int mappages(pagetable_t pagetable, uint64 va, uint64 size, uint64 pa, int perm)
 // 回收页表指向的地址空间及设置叶子页表项为0
 // 把所有叶子节点的页表项都设置为0，取消了映射关系，逻辑上物理空间未使用
 // 同时调用了kfree，实际上也将释放的4KB物理内存给到了free状态
+// uvmunmap(pagetable, PGROUNDUP(newsz), npages, 1);
 void uvmunmap(pagetable_t pagetable, uint64 va, uint64 npages, int do_free)
 {
 	uint64 a;
@@ -348,6 +349,8 @@ uint64 uvmalloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz, int xperm)
 // need to be less than oldsz.  oldsz can be larger than the actual
 // process size.  Returns the new process size.
 // 某个进程的页表回收部分，释放一部分存储空间
+// newsz是开始切的地址，是保留地址的结束，oldsz 是切结束的地址
+// [newsz,oldzs]这段地址清除
 uint64 uvmdealloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz)
 {
         if(newsz >= oldsz)

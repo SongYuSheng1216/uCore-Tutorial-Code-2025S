@@ -59,6 +59,15 @@ struct proc *allocproc(void)
 	return 0;
 
 found:
+	p->coun.sys_exit_counter = 0;
+	p->coun.sys_gettimeofday = 0;
+	p->coun.sys_mmap = 0;
+	p->coun.sys_munmap = 0;
+	p->coun.sys_sbrk = 0;
+	p->coun.sys_sched_yield_counter = 0;
+	p->coun.sys_trace = 0;
+	p->coun.sys_write_counter = 0;
+
 	p->pid = allocpid();
 	p->state = USED;
 	p->pagetable = 0;

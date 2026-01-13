@@ -27,6 +27,22 @@ struct context {
 };
 
 enum procstate { UNUSED, USED, SLEEPING, RUNNABLE, RUNNING, ZOMBIE };
+enum trace_choose {
+	read_choose,
+	write_choose,
+	call_choose
+};
+
+struct counter_do {
+	int sys_write_counter;
+	int sys_exit_counter;
+	int sys_sched_yield_counter;
+	int sys_gettimeofday;
+	int sys_sbrk;
+	int sys_trace;
+	int sys_mmap;
+	int sys_munmap;
+};
 
 // Per-process state
 struct proc {
@@ -43,6 +59,8 @@ struct proc {
 	/*
 	* LAB1: you may need to add some new fields here
 	*/
+	struct counter_do coun;
+
 };
 
 struct proc *curr_proc();
