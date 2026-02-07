@@ -32,6 +32,20 @@ struct context {
 
 enum procstate { UNUSED, USED, SLEEPING, RUNNABLE, RUNNING, ZOMBIE };
 
+struct vma{
+	uint64 start_addr;
+	uint64 end_addr;
+	uint64 length;
+	uint64 page_num;
+	struct vma* front_vma;
+	struct vma* next_vma;
+};
+
+struct priority_proc{
+	uint64 priority;
+	uint64 stride;
+};
+
 // Per-process state
 struct proc {
 	enum procstate state; // Process state
@@ -44,9 +58,13 @@ struct proc {
 	uint64 max_page;
 	struct proc *parent; // Parent process
 	uint64 exit_code;
-	struct file *files[FD_BUFFER_SIZE];
+	// 这三个的用法
+	struct file *files[FD_BUFFER_SIZE];	// file descriptors(文件描述符)
 	uint64 program_brk;
 	uint64 heap_bottom;
+
+	struct vma* vma_head;
+	struct priority_proc prio;
 };
 
 int cpuid();

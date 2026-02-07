@@ -1,6 +1,7 @@
 #include "kalloc.h"
 #include "defs.h"
 #include "riscv.h"
+#include "types.h"
 
 extern char ekernel[];
 
@@ -54,4 +55,22 @@ void *kalloc()
 		memset((char *)l, 5, PGSIZE); // fill with junk
 	}
 	return (void *)l;
+}
+
+// 判断是否有足够的内存
+int bool_enough_mem(uint64 max_num){
+	struct linklist *l;
+	struct linklist *next_node;
+	l = kmem.freelist;
+	next_node = l->next;
+	while(max_num > 0){
+		if(l){
+			l = next_node;
+			next_node = next_node->next;
+			max_num--;
+		}else {
+			return -1;
+		}
+	}
+	return 0;
 }

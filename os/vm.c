@@ -83,7 +83,12 @@ uint64 walkaddr(pagetable_t pagetable, uint64 va)
 		return 0;
 	if ((*pte & PTE_U) == 0)
 		return 0;
+
 	pa = PTE2PA(*pte);
+	// if(va == 0x10000000){
+	// 	printf("pte = %x\n", va);
+	// 	printf("pa = %x\n", pa);
+	// }
 	return pa;
 }
 
@@ -137,6 +142,13 @@ int mappages(pagetable_t pagetable, uint64 va, uint64 size, uint64 pa, int perm)
 // Remove npages of mappings starting from va. va must be
 // page-aligned. The mappings must exist.
 // Optionally free the physical memory.
+
+// va - end 之间注销，即 newsz - oldsz之间注销
+// uint64 uvmdealloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz)
+// int npages = (PGROUNDUP(oldsz) - PGROUNDUP(newsz)) / PGSIZE;
+
+// uvmunmap(pagetable, PGROUNDUP(newsz), npages, 1);
+
 void uvmunmap(pagetable_t pagetable, uint64 va, uint64 npages, int do_free)
 {
 	uint64 a;
@@ -146,19 +158,29 @@ void uvmunmap(pagetable_t pagetable, uint64 va, uint64 npages, int do_free)
 		panic("uvmunmap: not aligned");
 
 	for (a = va; a < va + npages * PGSIZE; a += PGSIZE) {
-		if ((pte = walk(pagetable, a, 0)) == 0)
+		if ((pte = walk(pagetable, a, 0)) == 0){
+			// if(a == 0x10000000)
+			// printf("aaaaaaaaaaaaaaaaaaa\n");
 			continue;
+		}
 		if ((*pte & PTE_V) != 0) {
+			// if(a == 0x10000000)
+			// printf("bbbbbbbbbbbbbbbbbbbbbb\n");
 			if (PTE_FLAGS(*pte) == PTE_V)
 				panic("uvmunmap: not a leaf");
 			if (do_free) {
+				// if(a == 0x10000000)
+				// printf("ccccccccccccccccccccccccccc\n");
 				uint64 pa = PTE2PA(*pte);
 				kfree((void *)pa);
 			}
 		}
+		// if(a == 0x10000000)
+		// printf("dddddddddddddddddddddddddddddd\n");
 		*pte = 0;
 	}
 }
+
 
 // create an empty user page table.
 // returns 0 if out of memory.
@@ -201,47 +223,136 @@ void freewalk(pagetable_t pagetable)
 	kfree((void *)pagetable);
 }
 
+// 从 VMA 链表中切除 [va, va + size) 这一段
+// 返回 0 成功，-1 失败
+int free_vma_range(struct proc *p, uint64 va, uint64 end) {
+    struct vma *v = p->vma_head;
+
+    for (; v != NULL; v = v->next_vma) {
+        // 找到包含这段区域的 VMA
+        // 注意：Lab 通常假设 munmap 不会跨越 VMA 边界，否则逻辑会非常复杂
+        if (v->start_addr <= va && v->end_addr >= end) {
+            
+            // 情况 A: 完全重合 (整个 VMA 被删掉)
+            if (v->start_addr == va && v->end_addr == end) {
+                // 处理双向链表断链
+                if (v->front_vma) v->front_vma->next_vma = v->next_vma;
+                if (v->next_vma)  v->next_vma->front_vma = v->front_vma;
+                if (p->vma_head == v) p->vma_head = v->next_vma; // 更新头指针
+                
+                kfree((void*)v);
+                return 0;
+            }
+
+            // 情况 B: 切掉开头 (Start 变大)
+            if (v->start_addr == va) {
+                v->start_addr = end;
+                v->length = v->end_addr - v->start_addr;
+                v->page_num = v->length / PGSIZE;
+                return 0;
+            }
+
+            // 情况 C: 切掉结尾 (End 变小)
+            if (v->end_addr == end) {
+                v->end_addr = va;
+                v->length = v->end_addr - v->start_addr;
+                v->page_num = v->length / PGSIZE;
+                return 0;
+            }
+
+            // 情况 D: 从中间挖洞 (Split，一分二)
+            // 原有: [start ------ end]
+            // 现有: [start -- va]   [end -- end]
+            
+            // 1. 新建一个 VMA 节点 (后半段)
+            struct vma *new_vma = (struct vma*)kalloc();
+            if (new_vma == NULL) return -1; // 内存不足
+            
+            new_vma->start_addr = end;
+            new_vma->end_addr = v->end_addr; // 继承原来的结尾
+            new_vma->length = new_vma->end_addr - new_vma->start_addr;
+            new_vma->page_num = new_vma->length / PGSIZE;
+
+            // 2. 修改旧 VMA (前半段)
+            v->end_addr = va;
+            v->length = v->end_addr - v->start_addr;
+            v->page_num = v->length / PGSIZE;
+
+            // 3. 插入链表 (插在 v 的后面)
+            new_vma->next_vma = v->next_vma;
+            new_vma->front_vma = v;
+            if (v->next_vma) v->next_vma->front_vma = new_vma;
+            v->next_vma = new_vma;
+
+            return 0;
+        }
+    }
+    return -1; // 没找到对应的 VMA
+}
+
 /**
  * @brief Free user memory pages, then free page-table pages.
  *
  * @param max_page The max vaddr of user-space.
  */
-void uvmfree(pagetable_t pagetable, uint64 max_page)
+void uvmfree(pagetable_t pagetable, struct vma* curr_vma)
 {
-	if (max_page > 0)
-		uvmunmap(pagetable, 0, max_page, 1);
+	// if (max_page > 0)
+	// 	uvmunmap(pagetable, 0, max_page, 1);
+
+    struct vma *v = curr_vma;
+    struct vma *next;
+
+    while(v != NULL){
+        // 1. 解映射物理页 (va, npages, do_free=1)
+		// printf("uvmfree is running\n");
+		// printf("v->start_addr : %x\n", v->start_addr);
+		// printf("v->page_num : %d\n", v->page_num);
+        uvmunmap(pagetable, v->start_addr, v->page_num, 1);
+        
+        // 2. 保存下一个指针 (防止断链)
+        next = v->next_vma;
+        
+        // 3. 释放 VMA 结构体本身
+        kfree((void*)v);
+        
+        // 4. 迭代
+        v = next;
+    }
+    curr_vma = NULL; // 清空头指针
 	freewalk(pagetable);
 }
 
 // Used in fork.
 // Copy the pagetable page and all the user pages.
 // Return 0 on success, -1 on error.
-int uvmcopy(pagetable_t old, pagetable_t new, uint64 max_page)
+int uvmcopy(pagetable_t old, pagetable_t new, uint64 start_addr, uint64 max_page)
 {
 	pte_t *pte;
 	uint64 pa, i;
 	uint flags;
 	char *mem;
-
-	for (i = 0; i < max_page * PAGE_SIZE; i += PGSIZE) {
-		if ((pte = walk(old, i, 0)) == 0)
+	// 为什么页表是顺序分配呢？
+	for (i = start_addr; i < max_page * PAGE_SIZE; i += PGSIZE) {
+		if ((pte = walk(old, i, 0)) == 0)	// 父进程这一项pte没分配，可能是lazy alloc，没用上
 			continue;
-		if ((*pte & PTE_V) == 0)
+		if ((*pte & PTE_V) == 0)	// swap？未分配？
 			continue;
 		pa = PTE2PA(*pte);
 		flags = PTE_FLAGS(*pte);
 		if ((mem = kalloc()) == 0)
 			goto err;
-		memmove(mem, (char *)pa, PGSIZE);
+		memmove(mem, (char *)pa, PGSIZE);	// 物理地址上数据的拷贝
+		// 虚拟地址和物理地址的映射
 		if (mappages(new, i, PGSIZE, (uint64)mem, flags) != 0) {
-			kfree(mem);
+			kfree(mem);	// 映射失败，则回收物理地址
 			goto err;
 		}
 	}
 	return 0;
 
 err:
-	uvmunmap(new, 0, i / PGSIZE, 1);
+	uvmunmap(new, 0, i / PGSIZE, 1);	// 如果中途内存不够，直接回收已经映射的
 	return -1;
 }
 
@@ -363,6 +474,7 @@ uint64 uvmalloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz, int xperm)
 // newsz.  oldsz and newsz need not be page-aligned, nor does newsz
 // need to be less than oldsz.  oldsz can be larger than the actual
 // process size.  Returns the new process size.
+// 即 newsz - oldsz之间注销
 uint64 uvmdealloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz)
 {
         if(newsz >= oldsz)
@@ -370,7 +482,11 @@ uint64 uvmdealloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz)
 
         if(PGROUNDUP(newsz) < PGROUNDUP(oldsz)){
                 int npages = (PGROUNDUP(oldsz) - PGROUNDUP(newsz)) / PGSIZE;
-                uvmunmap(pagetable, PGROUNDUP(newsz), npages, 1);
+                // printf("uvmdealloc is running\n");
+				// printf("newsz : %x\n", newsz);
+				// printf("npages : %x\n", npages);
+				uvmunmap(pagetable, PGROUNDUP(newsz), npages, 1);
+				
         }
 
         return newsz;

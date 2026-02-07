@@ -79,6 +79,26 @@ int bin_loader(uint64 start, uint64 end, struct proc *p)
 	p->program_brk = p->ustack + USTACK_SIZE;
         p->heap_bottom = p->ustack + USTACK_SIZE;
 	p->state = RUNNABLE;
+
+	// gemini需要的（解开
+	p->vma_head = (struct vma*)kalloc();
+	memset((char*)p->vma_head, 0, PGSIZE);
+	p->vma_head->front_vma  = NULL;
+	p->vma_head->next_vma   = NULL; 
+
+	// p->vma_head->start_addr = 0;
+	// p->vma_head->end_addr   = 0;
+	// p->vma_head->length     = 0;
+	// p->vma_head->page_num   = 0;
+
+	p->vma_head->start_addr = va_start;
+	p->vma_head->end_addr   = va_end;
+	p->vma_head->length     = length;
+	p->vma_head->page_num   = p->max_page;
+	// printf("p->vma_head->start_addr = %x\n", va_start);
+	// printf("p->vma_head->end_addr = %x\n", va_end);
+	// printf("p->vma_head->length = %d\n", length);
+	// printf("p->vma_head->page_num = %d\n", p->max_page);
 	return 0;
 }
 
