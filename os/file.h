@@ -10,13 +10,18 @@
 
 // in-memory copy of an inode,it can be used to quickly locate file entities on disk
 struct inode {
-	uint dev; // Device number
-	uint inum; // Inode number
+	uint dev; // Device number（这个inode是哪个分区/硬盘上的
+	uint inum; // Inode number（inode的值
 	int ref; // Reference count
 	int valid; // inode has been read from disk?
 	short type; // copy of disk inode
+				// (inode指向的数据区，是哪种文件类型
+				// 通常是 T_FILE (普通文件), T_DIR (目录), T_DEV (设备文件))
 	uint size;
 	uint addrs[NDIRECT + 1];
+	// NDIRECT：直接索引。例如前 12 个直接存块号（Block 100, Block 101...）。
+	// 1：通常指间接索引（Indirect Block）
+	// 如果文件太大，这最后一个指针指向一个“存满指针的块”，用来扩展文件大小。
 	// LAB4: You may need to add link count here
 };
 
@@ -63,3 +68,4 @@ struct file *stdio_init(int);
 int show_all_files();
 
 #endif // FILE_H
+
