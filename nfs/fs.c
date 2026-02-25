@@ -55,6 +55,8 @@ uint xint(uint x)
 {
 	uint y;
 	uchar *a = (uchar *)&y;
+	// 把x高位就放在地址的高位，x低位就放在地址的低位
+	// 也就是小端序的存储方式
 	a[0] = x;
 	a[1] = x >> 8;
 	a[2] = x >> 16;
@@ -204,6 +206,7 @@ uint ialloc(ushort type)
 	bzero(&din, sizeof(din));
 	din.type = xshort(type);
 	din.size = xint(0);
+	din.link = xint(1); 
 	// LAB4: You may want to init link count here
 	winode(inum, &din);
 	return inum;

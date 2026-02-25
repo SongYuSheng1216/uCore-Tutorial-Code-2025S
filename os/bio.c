@@ -23,6 +23,9 @@
 struct {
 	struct buf buf[NBUF];
 	struct buf head;
+	// 将buf数组组织成一个双向链表，head是链表的头结点
+	// head 用来把上面数组里的格子串成一条链表（双向链表）。
+	// 通过这个链表，我们就能管理书的“新鲜度”（LRU算法 - 最近最少使用算法） 
 } bcache;
 
 void binit()
@@ -41,6 +44,9 @@ void binit()
 
 // Look through buffer cache for block on device dev.
 // If not found, allocate a buffer.
+// 在bcache里面找到dev设备的blockno块，如果没有找到，就分配一个新的buffer
+// 返回一个buf结构体指针，里面包含了blockno块的内容
+// 得到指定block号的buf结构体指针
 static struct buf *bget(uint dev, uint blockno)
 {
 	struct buf *b;
@@ -53,6 +59,7 @@ static struct buf *bget(uint dev, uint blockno)
 	}
 	// Not cached.
 	// Recycle the least recently used (LRU) unused buffer.
+	// 这里是真正的释放，直接在这个buf里面写入新的数据
 	for (b = bcache.head.prev; b != &bcache.head; b = b->prev) {
 		if (b->refcnt == 0) {
 			b->dev = dev;
@@ -70,12 +77,14 @@ const int R = 0;
 const int W = 1;
 
 // Return a buf with the contents of the indicated block.
+// 返回一个buf，里面是指定block的内容
+// 得到指定block号的内容
 struct buf *bread(uint dev, uint blockno)
 {
 	struct buf *b;
 	b = bget(dev, blockno);
-	if (!b->valid) {
-		virtio_disk_rw(b, R);
+	if (!b->valid) {	// 如果不是最新获得磁盘中的数据
+		virtio_disk_rw(b, R);	// 那么去磁盘读写
 		b->valid = 1;
 	}
 	return b;
@@ -89,6 +98,7 @@ void bwrite(struct buf *b)
 
 // Release a buffer.
 // Move to the head of the most-recently-used list.
+// 把它放置在bcache链表的首部
 void brelse(struct buf *b)
 {
 	b->refcnt--;

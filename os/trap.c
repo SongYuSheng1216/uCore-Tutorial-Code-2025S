@@ -36,19 +36,22 @@ void unknown_trap()
 	exit(-1);
 }
 
+// 这是中断处理函数
+// s-mode 和 u-mode的中断都在这里处理
 void devintr(uint64 cause)
 {
-	int irq;
+	int irq;	// interrupt request
 	switch (cause) {
 	case SupervisorTimer:
 		set_next_timer();
 		// if form user, allow yield
 		if ((r_sstatus() & SSTATUS_SPP) == 0) {
+			// 进入s-mode前是user-mode
 			yield();
 		}
 		break;
 	case SupervisorExternal:
-		irq = plic_claim();
+		irq = plic_claim();	// 获得符合优先级且当前context支持的外设的ID
 		if (irq == UART0_IRQ) {
 			// do nothing
 		} else if (irq == VIRTIO0_IRQ) {
@@ -78,7 +81,7 @@ void usertrap()
 		panic("usertrap: not from user mode");
 
 	uint64 cause = r_scause();
-	if (cause & (1ULL << 63)) {
+	if (cause & (1ULL << 63)) {	// 原因是中断
 		devintr(cause & 0xff);
 	} else {
 		switch (cause) {
@@ -141,6 +144,8 @@ void usertrapret()
 
 void kerneltrap()
 {
+	// 在汇编中保存了31个寄存器（x0是0不用存）
+	// 这里再保存sepc和status，待会好返回
 	uint64 sepc = r_sepc();
 	uint64 sstatus = r_sstatus();
 	uint64 scause = r_scause();

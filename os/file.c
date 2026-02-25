@@ -57,6 +57,7 @@ struct file *filealloc()
 }
 
 //Show names of all files in the root_dir.
+// 返回根目录下所有文件的名字
 int show_all_files()
 {
 	return dirls(root_dir());
@@ -65,6 +66,9 @@ int show_all_files()
 //Create a new empty file based on path and type and return its inode;
 //if the file under the path exists, return its inode;
 //returns 0 if the type of file to be created is not T_file
+// 创建一个新的空文件，基于路径和类型，并返回它的inode；
+// 如果路径下的文件存在，返回它的inode；
+// 如果要创建的文件类型不是T_file，返回0(因为只有根目录，不创建目录，都放在根目录下)
 static struct inode *create(char *path, short type)
 {
 	struct inode *ip, *dp;
@@ -79,12 +83,13 @@ static struct inode *create(char *path, short type)
 		iput(ip);
 		return 0;
 	}
-	if ((ip = ialloc(dp->dev, type)) == 0)
+	if ((ip = ialloc(dp->dev, type)) == 0)	// 目前在这里面的iget
 		panic("create: ialloc");
 
 	tracef("create dinode and inode type = %d\n", type);
-
 	ivalid(ip);
+	// 新创建的文件至少有一个链接了
+	ip->link = 1;
 	iupdate(ip);
 	if (dirlink(dp, path, ip->inum) < 0)
 		panic("create: dirlink");
@@ -96,6 +101,9 @@ static struct inode *create(char *path, short type)
 //A process creates or opens a file according to its path, returning the file descriptor of the created or opened file.
 //If omode is O_CREATE, create a new file
 //if omode if the others,open a created file.
+// 进程根据路径创建或打开一个文件，返回创建或打开的文件的文件描述符。
+// 如果omode是O_CREATE，创建一个新文件；
+// 如果omode是其他的，打开一个已创建的文件。
 int fileopen(char *path, uint64 omode)
 {
 	int fd;

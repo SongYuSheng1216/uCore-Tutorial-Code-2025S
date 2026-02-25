@@ -41,13 +41,24 @@ struct superblock {
 #define T_DIR 1 // Directory
 #define T_FILE 2 // File
 
+typedef struct {
+	uint64 dev; // 文件所在磁盘驱动器号，不考虑
+	uint64 ino; // inode 文件所在 inode 编号
+	uint32 mode; // 文件类型
+	uint32 nlink; // 硬链接数量，初始为1
+	uint64 pad[7]; // 无需考虑，为了兼容性设计
+} Stat;
+
 // On-disk inode structure
 struct dinode {
 	short type; // File type
-	short pad[3];
+	short pad[1];
 	// LAB4: you can reduce size of pad array and add link count below,
 	//       or you can just regard a pad as link count.
 	//       But keep in mind that you'd better keep sizeof(dinode) unchanged
+	// LAB4 注释：可以调整 pad 数组大小，新增链接数字段，或直接用一个 pad 字段当链接数
+	// 注意：最好保持 sizeof(dinode) 不变（避免破坏磁盘布局）
+	uint link;
 	uint size; // Size of file (bytes)
 	uint addrs[NDIRECT + 1]; // Data block addresses
 };
@@ -59,9 +70,12 @@ struct dinode {
 #define IBLOCK(i, sb) ((i) / IPB + sb.inodestart)
 
 // Bitmap bits per block
+// 一个block块中能存多少bit map位
 #define BPB (BSIZE * 8)
 
 // Block of free map containing bit for block b
+// 获得块b在磁盘上对应的位图块号，b是块号
+// 这个位就是指示块b是否被占用的位
 #define BBLOCK(b, sb) ((b) / BPB + sb.bmapstart)
 
 // Directory is a file containing a sequence of dirent structures.
@@ -78,6 +92,7 @@ struct inode;
 void fsinit();
 int dirlink(struct inode *, char *, uint);
 struct inode *dirlookup(struct inode *, char *, uint *);
+int dirunlink(struct inode *dp, char *name, uint inum);
 struct inode *ialloc(uint, short);
 struct inode *idup(struct inode *);
 void iinit();

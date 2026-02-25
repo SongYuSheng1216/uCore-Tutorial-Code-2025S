@@ -7,6 +7,8 @@
 struct buf {
 	int valid; // has data been read from disk?
 	int disk; // does disk "own" buf?
+	// disk 是缓冲区的 IO 状态标记位
+	// 核心作用是标记 “该缓冲区是否正在和磁盘进行读写交互”；
 	uint dev;
 	uint blockno;
 	uint refcnt;

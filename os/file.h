@@ -17,6 +17,7 @@ struct inode {
 	short type; // copy of disk inode
 	uint size;
 	uint addrs[NDIRECT + 1];
+	uint link;
 	// LAB4: You may need to add link count here
 };
 
