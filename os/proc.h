@@ -66,6 +66,15 @@ struct proc {
 	// LAB5: (1) Define your variables for deadlock detect here.
 	//			 You may need a flag to record if detection enabled,
 	//       and some arrays for detection algorithm.
+	int available_mutex[LOCK_POOL_SIZE];	// 记录当前可用的互斥锁数量
+	int mutex_allocation[NTHREAD][LOCK_POOL_SIZE];	// 记录每个线程占有的互斥锁数量
+	int mutex_request[NTHREAD][LOCK_POOL_SIZE];	// 记录每个线程请求的互斥锁数量
+
+	int available_semaphore[LOCK_POOL_SIZE];	// 记录当前可用的信号量数量
+	int semaphore_allocation[NTHREAD][LOCK_POOL_SIZE];	// 记录每个线程占有的信号量数量
+	int semaphore_request[NTHREAD][LOCK_POOL_SIZE];	// 记录每个线程请求的信号量数量
+	
+	int deadlock_detect_enabled;	// 记录是否启用死锁检测
 };
 
 int cpuid();

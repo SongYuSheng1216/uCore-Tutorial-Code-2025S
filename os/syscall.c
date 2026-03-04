@@ -250,6 +250,57 @@ int sys_waittid(int tid)
 *				use this idea or just ignore it.
 */
 
+// 当多个请求到达时，它们会被放入一个等待队列，或者通过自旋锁/互斥锁保证一次只有一个线程进入银行家算法模块。
+// 一次只有一个线程进入该模块，那为什么要模拟是否能满足所有线程的需求
+// 因为这是模拟一个顺序执行的过程，虽然一次只有一个线程进入，模拟给这个线程资源，满足它完成任务
+// 然后释放资源，模拟分配到下一个线程，看看能不能满足它的需求，直到所有线程都完成或者没有线程能满足需求了
+// 就说明我现在分配给这个线程的资源不会导致死锁
+// 但是我是按数组的顺序满足资源，不是第一个去满足现在送进来的线程，就有点奇怪
+int deadlock_detect(const int available[LOCK_POOL_SIZE],const int allocation[NTHREAD][LOCK_POOL_SIZE],const int request[NTHREAD][LOCK_POOL_SIZE]){
+	// 步骤1，设置work和finish
+	int work[LOCK_POOL_SIZE];
+	int finish[NTHREAD] = {0};
+
+    for (int i = 0; i < LOCK_POOL_SIZE; i++) {
+        work[i] = available[i];
+    }
+	// 步骤2，找到一个满足条件的线程
+	while(1){
+		int found = 0;
+		for(int i = 0; i < NTHREAD; i++){
+			if(finish[i] == 0){
+				int j = 0;
+				for(; j < LOCK_POOL_SIZE; j++){
+					// 我要查request[i][j] <= work[j]是否对所有资源都满足
+					if(request[i][j] > work[j]){	// i线程下需要的j锁，超过了可用值，查询下一个线程
+						break;
+					}
+				}
+				if(j == LOCK_POOL_SIZE){
+					// 步骤3，说明线程i的请求都满足
+					finish[i] = 1;	// 标记线程i完成
+					found = 1;
+					for(int k = 0; k < LOCK_POOL_SIZE; k++){
+						work[k] += allocation[i][k];	// 释放线程i占有的资源
+					}
+				}
+			}
+		}
+		if(found == 0){
+			break;	// 没有找到满足条件的线程了，退出循环
+		}
+	}
+	// 步骤4，检查是否所有线程都完成了
+	for(int i = 0; i < NTHREAD; i++){
+		if(finish[i] == 0){
+			return 1;	// 存在线程没有完成，说明有死锁
+		}
+	}
+	return 0;	// 所有线程都完成了，没有死锁
+}
+
+// 其实送进来的线程已经分配了资源，在mutex_lock 或 semaphore_down，调用这个deadlock_detect的上层函数就已经修改了available和allocation
+
 int sys_mutex_create(int blocking)
 {
 	struct mutex *m = mutex_create(blocking);
@@ -259,6 +310,7 @@ int sys_mutex_create(int blocking)
 	}
 	// LAB5: (4-1) You may want to maintain some variables for detect here
 	int mutex_id = m - curr_proc()->mutex_pool;
+	curr_proc()->available_mutex[mutex_id] = 1;	// 可用的互斥锁数量加1
 	debugf("create mutex %d", mutex_id);
 	return mutex_id;
 }
@@ -271,7 +323,23 @@ int sys_mutex_lock(int mutex_id)
 	}
 	// LAB5: (4-1) You may want to maintain some variables for detect
 	//       or call your detect algorithm here
+
+	if(curr_proc()->deadlock_detect_enabled == 1){
+		// 调用死锁检测算法
+		curr_proc()->mutex_request[curr_thread()->tid][mutex_id] = 1;
+
+		if(deadlock_detect(curr_proc()->available_mutex, curr_proc()->mutex_allocation, curr_proc()->mutex_request) == 1){
+			errorf("Deadlock detected when locking mutex %d", mutex_id);
+			curr_proc()->mutex_request[curr_thread()->tid][mutex_id] = 0; // 回滚请求
+            return -0xDEAD;
+		}
+	}
 	mutex_lock(&curr_proc()->mutex_pool[mutex_id]);
+	if(curr_proc()->deadlock_detect_enabled) {
+        curr_proc()->mutex_request[curr_thread()->tid][mutex_id] = 0;
+        curr_proc()->mutex_allocation[curr_thread()->tid][mutex_id] = 1;
+        curr_proc()->available_mutex[mutex_id] = 0;
+    }
 	return 0;
 }
 
@@ -282,6 +350,23 @@ int sys_mutex_unlock(int mutex_id)
 		return -1;
 	}
 	// LAB5: (4-1) You may want to maintain some variables for detect here
+    if (curr_proc()->deadlock_detect_enabled == 1) {
+        int tid = curr_thread()->tid;
+
+        // 1. 确保该线程确实持有这个锁，防止误解锁
+        if (curr_proc()->mutex_allocation[tid][mutex_id] == 0) {
+            errorf("Thread %d tries to unlock mutex %d which it doesn't hold", tid, mutex_id);
+            return -1;
+        }
+
+        // 2. 将分配矩阵设为 0（不再持有）
+        curr_proc()->mutex_allocation[tid][mutex_id] = 0;
+
+        // 3. 将可用矩阵设为 1（锁变回空闲状态，其他线程可以竞争了）
+        curr_proc()->available_mutex[mutex_id] = 1;
+        
+        // 注意：Request 数组通常在 lock 成功后就已经清零了，这里不需要动
+    }
 	mutex_unlock(&curr_proc()->mutex_pool[mutex_id]);
 	return 0;
 }
@@ -295,11 +380,12 @@ int sys_semaphore_create(int res_count)
 	}
 	// LAB5: (4-2) You may want to maintain some variables for detect here
 	int sem_id = s - curr_proc()->semaphore_pool;
+	curr_proc()->available_semaphore[sem_id] = res_count;	// 可用的信号量数量加1
 	debugf("create semaphore %d", sem_id);
 	return sem_id;
 }
 
-int sys_semaphore_up(int semaphore_id)
+int sys_semaphore_up(int semaphore_id)// V操作，相当于锁的释放
 {
 	if (semaphore_id < 0 ||
 	    semaphore_id >= curr_proc()->next_semaphore_id) {
@@ -307,6 +393,19 @@ int sys_semaphore_up(int semaphore_id)
 		return -1;
 	}
 	// LAB5: (4-2) You may want to maintain some variables for detect here
+	if(curr_proc()->deadlock_detect_enabled == 1) {
+		int tid = curr_thread()->tid;
+
+		// 1. 确保该线程确实持有这个信号量，防止误操作
+		if (curr_proc()->semaphore_allocation[tid][semaphore_id] == 0) {
+			errorf("Thread %d tries to up semaphore %d which it doesn't hold", tid, semaphore_id);
+			return -1;
+		}
+		// 2. 将分配矩阵设为 0（不再持有）
+		curr_proc()->semaphore_allocation[tid][semaphore_id]--;
+		// 3. 将可用矩阵设为 1（信号量变回可用状态，其他线程可以竞争了）
+		curr_proc()->available_semaphore[semaphore_id]++;
+	}
 	semaphore_up(&curr_proc()->semaphore_pool[semaphore_id]);
 	return 0;
 }
@@ -320,7 +419,29 @@ int sys_semaphore_down(int semaphore_id)
 	}
 	// LAB5: (4-2) You may want to maintain some variables for detect
 	//       or call your detect algorithm here
+	if(curr_proc()->deadlock_detect_enabled == 1){
+		// 调用死锁检测算法
+		curr_proc()->semaphore_request[curr_thread()->tid][semaphore_id] = 1;
+
+		if(deadlock_detect(curr_proc()->available_semaphore, curr_proc()->semaphore_allocation, curr_proc()->semaphore_request) == 1){
+			errorf("Deadlock detected when downing semaphore %d", semaphore_id);
+			curr_proc()->semaphore_request[curr_thread()->tid][semaphore_id] = 0; // 回滚请求
+			return -0xDEAD;
+		}
+	}
 	semaphore_down(&curr_proc()->semaphore_pool[semaphore_id]);
+	if(curr_proc()->deadlock_detect_enabled) {
+		int tid = curr_thread()->tid;
+
+		// 1. 将请求矩阵设为 0（请求已经满足了）
+		curr_proc()->semaphore_request[tid][semaphore_id] = 0;
+
+		// 2. 将分配矩阵设为 1（现在持有这个资源了）
+		curr_proc()->semaphore_allocation[tid][semaphore_id]++;
+
+		// 3. 将可用矩阵设为 0（资源被占用了，其他线程不能竞争了）
+		curr_proc()->available_semaphore[semaphore_id]--;
+	}
 	return 0;
 }
 
@@ -362,6 +483,25 @@ int sys_condvar_wait(int cond_id, int mutex_id)
 }
 
 // LAB5: (2) you may need to define function enable_deadlock_detect here
+int sys_enable_deadlock_detect(int is_enable)
+{
+	if(is_enable == 0){
+		return 0;
+	}
+	if((is_enable != 0) && (is_enable != 1)){
+		errorf("Unexpected argument for enable_deadlock_detect: %d", is_enable);
+		return -1;
+	}
+	// 还有两种情况
+	// 1. 死锁检测开启失败
+	// 2. 死锁检测开启成功，实现功能
+	// 功能，我目前的想法是：每次sys_mutex_lock和sys_semaphore_down的时候都调用死锁检测算法
+	// 如果检测到死锁了就打印死锁信息并且杀死相关线程
+	curr_proc()->deadlock_detect_enabled = 1;
+	return 0;
+}
+
+
 
 extern char trap_page[];
 
@@ -455,6 +595,9 @@ void syscall()
 		ret = sys_condvar_wait(args[0], args[1]);
 		break;
 	// LAB5: (2) you may need to add case SYS_enable_deadlock_detect here
+	case SYS_enable_deadlock_detect:
+		ret = sys_enable_deadlock_detect(args[0]);
+		break;
 	default:
 		ret = -1;
 		errorf("unknown syscall %d", id);

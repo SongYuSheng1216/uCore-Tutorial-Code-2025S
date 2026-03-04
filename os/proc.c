@@ -143,6 +143,19 @@ found:
 	p->next_semaphore_id = 0;
 	p->next_condvar_id = 0;
 	// LAB5: (1) you may initialize your new proc variables here
+	for(int i = 0; i < LOCK_POOL_SIZE; i++){
+		p->available_mutex[i] = 0;
+		p->available_semaphore[i] = 0;
+	}
+	for(int i = 0; i < NTHREAD; i++){
+		for(int j = 0; j < LOCK_POOL_SIZE; j++){
+			p->mutex_allocation[i][j] = 0;
+			p->mutex_request[i][j] = 0;
+			p->semaphore_allocation[i][j] = 0;
+			p->semaphore_request[i][j] = 0;
+		}
+	}
+	p->deadlock_detect_enabled = 0;
 	return p;
 }
 
@@ -447,6 +460,7 @@ void exit(int code)
 	int tid = t->tid;
 	debugf("thread exit with %d", code);
 	freethread(t);
+	// tid == 0 意味着这个线程是主线程，退出时需要释放整个进程资源
 	if (tid == 0) {
 		p->exit_code = code;
 		freeproc(p);

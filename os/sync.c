@@ -22,7 +22,7 @@ struct mutex *mutex_create(int blocking)
 
 void mutex_lock(struct mutex *m)
 {
-	if (!m->locked) {
+	if (!m->locked) {	// 锁未被占用，直接拿到锁
 		m->locked = 1;
 		debugf("lock a free mutex");
 		return;
@@ -30,7 +30,7 @@ void mutex_lock(struct mutex *m)
 	if (!m->blocking) {
 		// spin mutex will just poll
 		debugf("try to lock spin mutex");
-		while (m->locked) {
+		while (m->locked) {	// 自旋锁
 			yield();
 		}
 		debugf("lock spin mutex after some trials");
@@ -38,7 +38,7 @@ void mutex_lock(struct mutex *m)
 	}
 	// blocking mutex will wait in the queue
 	struct thread *t = curr_thread();
-	push_queue(&m->wait_queue, task_to_id(t));
+	push_queue(&m->wait_queue, task_to_id(t));	// 将当前线程加入锁m等待队列
 	// don't forget to change thread state to SLEEPING
 	t->state = SLEEPING;
 	debugf("block to wait for mutex");
@@ -53,12 +53,12 @@ void mutex_unlock(struct mutex *m)
 		struct thread *t = id_to_task(pop_queue(&m->wait_queue));
 		if (t == NULL) {
 			// Without waiting thread, just release the lock
-			m->locked = 0;
+			m->locked = 0;	// 18
 			debugf("blocking mutex released");
 		} else {
 			// Or we should give lock to next thread
-			t->state = RUNNABLE;
-			add_task(t);
+			t->state = RUNNABLE;	// 21
+			add_task(t);	// 22
 			debugf("blocking mutex passed to thread %d", t->tid);
 		}
 	} else {
@@ -80,7 +80,7 @@ struct semaphore *semaphore_create(int count)
 	return s;
 }
 
-void semaphore_up(struct semaphore *s)
+void semaphore_up(struct semaphore *s)	// V 操作
 {
 	s->count++;
 	if (s->count <= 0) {
@@ -96,7 +96,7 @@ void semaphore_up(struct semaphore *s)
 	debugf("semaphore up from %d to %d", s->count - 1, s->count);
 }
 
-void semaphore_down(struct semaphore *s)
+void semaphore_down(struct semaphore *s)	// P 操作
 {
 	s->count--;
 	if (s->count < 0) {

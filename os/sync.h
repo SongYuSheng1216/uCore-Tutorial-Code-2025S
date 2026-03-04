@@ -6,11 +6,13 @@
 #define WAIT_QUEUE_MAX_LENGTH 16
 
 struct mutex {
-	uint blocking;
-	uint locked;
-	struct queue wait_queue;
+	uint blocking;	// 表示是阻塞锁，还是自旋锁
+	uint locked;	// 是否上锁
+	struct queue wait_queue;	// 阻塞的线程等待队列
 	// "alloc" data for wait queue
-	int _wait_queue_data[WAIT_QUEUE_MAX_LENGTH];
+// 注意：这里的_wait_queue_data只是为了给wait_queue提供一个静态的数组作为数据存储空间
+// 它用来存放那些因为拿不到锁而被阻塞的线程 ID（或者线程控制块的索引）。
+	int _wait_queue_data[WAIT_QUEUE_MAX_LENGTH];	
 };
 
 struct semaphore {
