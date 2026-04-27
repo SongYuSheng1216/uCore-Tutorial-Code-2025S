@@ -142,7 +142,7 @@ found:
 	p->next_mutex_id = 0;
 	p->next_semaphore_id = 0;
 	p->next_condvar_id = 0;
-	// LAB5: (1) you may initialize your new proc variables here
+	// OPT: (1) you may initialize your new proc variables here
 	for(int i = 0; i < LOCK_POOL_SIZE; i++){
 		p->available_mutex[i] = 0;
 		p->available_semaphore[i] = 0;

@@ -28,6 +28,6 @@ void main()
 	timer_init();
 	load_init_app();
 	infof("start scheduler!");
-	show_all_files();
+	//show_all_files();
 	scheduler();
 }

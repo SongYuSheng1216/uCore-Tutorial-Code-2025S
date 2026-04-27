@@ -183,8 +183,8 @@ uint64 sys_openat(uint64 va, uint64 omode, uint64 _flags)
 {
 	struct proc *p = curr_proc();
 	char path[200];
-	copyinstr(p->pagetable, path, va, 200);
-	return fileopen(path, omode);
+	copyinstr(p->pagetable, path, va, 200);	// va复制到内核空间的path
+	return fileopen(path, omode);			// 打开文件，返回fd
 }
 
 uint64 sys_close(int fd)
@@ -242,7 +242,7 @@ int sys_waittid(int tid)
 }
 
 /*
-*	LAB5: (3) In the TA's reference implementation, here defines funtion
+*	OPT: (3) In the TA's reference implementation, here defines funtion
 *					int deadlock_detect(const int available[LOCK_POOL_SIZE],
 *						const int allocation[NTHREAD][LOCK_POOL_SIZE],
 *						const int request[NTHREAD][LOCK_POOL_SIZE])
@@ -308,7 +308,7 @@ int sys_mutex_create(int blocking)
 		errorf("fail to create mutex: out of resource");
 		return -1;
 	}
-	// LAB5: (4-1) You may want to maintain some variables for detect here
+	// OPT: (4-1) You may want to maintain some variables for detect here
 	int mutex_id = m - curr_proc()->mutex_pool;
 	curr_proc()->available_mutex[mutex_id] = 1;	// 可用的互斥锁数量加1
 	debugf("create mutex %d", mutex_id);
@@ -321,7 +321,7 @@ int sys_mutex_lock(int mutex_id)
 		errorf("Unexpected mutex id %d", mutex_id);
 		return -1;
 	}
-	// LAB5: (4-1) You may want to maintain some variables for detect
+	// OPT: (4-1) You may want to maintain some variables for detect
 	//       or call your detect algorithm here
 
 	if(curr_proc()->deadlock_detect_enabled == 1){
@@ -349,7 +349,7 @@ int sys_mutex_unlock(int mutex_id)
 		errorf("Unexpected mutex id %d", mutex_id);
 		return -1;
 	}
-	// LAB5: (4-1) You may want to maintain some variables for detect here
+	// OPT: (4-1) You may want to maintain some variables for detect here
     if (curr_proc()->deadlock_detect_enabled == 1) {
         int tid = curr_thread()->tid;
 
@@ -378,7 +378,7 @@ int sys_semaphore_create(int res_count)
 		errorf("fail to create semaphore: out of resource");
 		return -1;
 	}
-	// LAB5: (4-2) You may want to maintain some variables for detect here
+	// OPT: (4-2) You may want to maintain some variables for detect here
 	int sem_id = s - curr_proc()->semaphore_pool;
 	curr_proc()->available_semaphore[sem_id] = res_count;	// 可用的信号量数量加1
 	debugf("create semaphore %d", sem_id);
@@ -392,7 +392,7 @@ int sys_semaphore_up(int semaphore_id)// V操作，相当于锁的释放
 		errorf("Unexpected semaphore id %d", semaphore_id);
 		return -1;
 	}
-	// LAB5: (4-2) You may want to maintain some variables for detect here
+	// OPT: (4-2) You may want to maintain some variables for detect here
 	if(curr_proc()->deadlock_detect_enabled == 1) {
 		int tid = curr_thread()->tid;
 
@@ -417,7 +417,7 @@ int sys_semaphore_down(int semaphore_id)
 		errorf("Unexpected semaphore id %d", semaphore_id);
 		return -1;
 	}
-	// LAB5: (4-2) You may want to maintain some variables for detect
+	// OPT: (4-2) You may want to maintain some variables for detect
 	//       or call your detect algorithm here
 	if(curr_proc()->deadlock_detect_enabled == 1){
 		// 调用死锁检测算法
@@ -482,7 +482,7 @@ int sys_condvar_wait(int cond_id, int mutex_id)
 	return 0;
 }
 
-// LAB5: (2) you may need to define function enable_deadlock_detect here
+// OPT: (2) you may need to define function enable_deadlock_detect here
 int sys_enable_deadlock_detect(int is_enable)
 {
 	if(is_enable == 0){
@@ -594,7 +594,7 @@ void syscall()
 	case SYS_condvar_wait:
 		ret = sys_condvar_wait(args[0], args[1]);
 		break;
-	// LAB5: (2) you may need to add case SYS_enable_deadlock_detect here
+	// OPT: (2) you may need to add case SYS_enable_deadlock_detect here
 	case SYS_enable_deadlock_detect:
 		ret = sys_enable_deadlock_detect(args[0]);
 		break;

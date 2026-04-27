@@ -108,6 +108,19 @@ QEMUOPTS = \
 	-kernel build/kernel	\
 	-drive file=$(F)/fs-copy.img,if=none,format=raw,id=x0 \
     -device virtio-blk-device,drive=x0,bus=virtio-mmio-bus.0
+# -drive:后端存储
+# if=none：表示不绑定任何默认设备接口（如 IDE、SCSI）。单纯创建一个后端存储对象，供后续 -device 使用。
+# format=raw：镜像格式为 raw（原始二进制），不做任何转换或压缩。
+# id=x0：给这个后端存储一个唯一标识符 x0，供前端设备引用
+
+# virtio-blk-device：创建一个 virtio 块设备的前端（即虚拟机内部看到的磁盘控制器）。
+# drive=x0：将前面定义的 id=x0 存储后端绑定到这个设备上。这样虚拟机对磁盘的读写就会映射到 fs-copy.img 文件。
+# bus=virtio-mmio-bus.0：将设备挂载到指定的 virtio‑MMIO 总线上。
+# virtio-mmio-bus.0 是 QEMU 为 -machine virt（ARM 或 RISC‑V 虚拟平台）默认创建的简单内存映射总线
+# 适用于没有 PCIe 的嵌入式/教学环境。
+
+#在 QEMU 的模拟环境中，内核不会“自动”连接到这个设备，而是需要内核中相应的驱动程序主动探测并初始化该设备。
+# 在main函数中调用了
 
 $(F)/fs.img:
 	make -C $(F)

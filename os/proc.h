@@ -63,7 +63,7 @@ struct proc {
 	struct mutex mutex_pool[LOCK_POOL_SIZE];
 	struct semaphore semaphore_pool[LOCK_POOL_SIZE];
 	struct condvar condvar_pool[LOCK_POOL_SIZE];
-	// LAB5: (1) Define your variables for deadlock detect here.
+	// OPT: (1) Define your variables for deadlock detect here.
 	//			 You may need a flag to record if detection enabled,
 	//       and some arrays for detection algorithm.
 	int available_mutex[LOCK_POOL_SIZE];	// 记录当前可用的互斥锁数量
