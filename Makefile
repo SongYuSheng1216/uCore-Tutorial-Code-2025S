@@ -94,6 +94,7 @@ build/kernel: $(OBJS) os/kernel.ld
 clean:
 	rm -rf $(BUILDDIR) os/initproc.S
 	rm $(F)/*.img
+	make -C ./user clean
 
 # BOARD
 BOARD		?= qemu

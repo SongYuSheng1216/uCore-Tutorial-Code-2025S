@@ -7,6 +7,9 @@
 struct buf {
 	int valid; // has data been read from disk?
 	int disk; // does disk "own" buf?
+	// 如果这个buf此时和磁盘交互，正在被读写
+	// 那么disk置为1，
+	// 如果有其他进程想要使用这个buf，就必须等待disk置为0
 	uint dev;
 	uint blockno;
 	uint refcnt;

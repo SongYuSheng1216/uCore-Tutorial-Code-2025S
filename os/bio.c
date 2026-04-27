@@ -89,6 +89,7 @@ void bwrite(struct buf *b)
 
 // Release a buffer.
 // Move to the head of the most-recently-used list.
+// 回收buffer b，并将其放到链表头部
 void brelse(struct buf *b)
 {
 	b->refcnt--;

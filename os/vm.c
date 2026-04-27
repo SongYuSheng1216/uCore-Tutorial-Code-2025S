@@ -25,6 +25,7 @@ pagetable_t kvmmake()
 	kvmmap(kpgtbl, (uint64)e_text, (uint64)e_text, PHYSTOP - (uint64)e_text,
 	       PTE_R | PTE_W);
 	kvmmap(kpgtbl, TRAMPOLINE, (uint64)trampoline, PGSIZE, PTE_R | PTE_X);
+	//kvmmap(kpgtbl, UART_BASE, UART_BASE , PGSIZE, PTE_R | PTE_W) ;
 	return kpgtbl;
 }
 
@@ -191,6 +192,10 @@ pagetable_t uvmcreate()
 		     PTE_R | PTE_X) < 0) {
 		panic("mappages fail");
 	}
+	// if(mappages(pagetable, UART_BASE, PAGE_SIZE, UART_BASE,
+	// 	     PTE_R | PTE_W | PTE_U) < 0) {
+	// 	panic("mappages fail");
+	// }
 	return pagetable;
 }
 

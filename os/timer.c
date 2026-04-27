@@ -3,7 +3,7 @@
 #include "sbi.h"
 
 /// read the `mtime` regiser
-uint64 get_cycle()
+uint64 get_cycle()	// 返回开机到现在的周期数
 {
 	return r_time();
 }

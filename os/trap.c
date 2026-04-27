@@ -9,7 +9,8 @@
 
 extern char trampoline[], uservec[];
 extern char userret[], kernelvec[];
-
+extern struct thread *sleep_queue_head;
+extern struct queue_prio task_queue;
 void kerneltrap();
 
 // set up to take exceptions and traps while in the kernel.
@@ -42,12 +43,57 @@ void devintr(uint64 cause)
 	int irq;
 	switch (cause) {
 	case SupervisorTimer:
-		set_next_timer();
-		// if form user, allow yield
-		if ((r_sstatus() & SSTATUS_SPP) == 0) {
-			yield();
-		}
-		break;
+        set_next_timer();
+        // if from user, allow yield
+        if ((r_sstatus() & SSTATUS_SPP) == 0) {
+            
+            // struct thread *t = sleep_queue_head;
+            // uint64 current_cycle = get_cycle();
+
+            // while (t != NULL) {
+            //     // 提前保存下一个节点，因为 t 如果被删除，t->next_sleep 可能会发生改变
+            //     struct thread *next_t = t->next_sleep;
+
+            //     if (t->state == SLEEPING && current_cycle >= t->time_sleep) {
+                    
+            //         // 1. Stride 补偿逻辑
+            //         uint64 min_stride = get_queue_min_stride(&task_queue);
+            //         if (t->prio.stride < min_stride) {
+            //             t->prio.stride = min_stride;
+            //         }
+                    
+            //         // 2. 改变状态并加入就绪队列
+            //         t->state = RUNNABLE;
+            //         add_task(t);
+
+            //         // 3. === 双向链表安全删除逻辑 ===
+            //         if (t->prev_sleep != NULL) {
+            //             // t 不是头节点，让前一个节点跨过 t 指向下一个
+            //             t->prev_sleep->next_sleep = t->next_sleep;
+            //         } else {
+            //             // t 是头节点，删除后，新的头节点变成下一个
+            //             sleep_queue_head = t->next_sleep;
+            //         }
+
+            //         if (t->next_sleep != NULL) {
+            //             // t 不是尾节点，让后一个节点跨过 t 指向前一个
+            //             t->next_sleep->prev_sleep = t->prev_sleep;
+            //         }
+                    
+            //         // 养成好习惯，清理摘下节点的指针（防止成为野指针）
+            //         t->next_sleep = NULL;
+            //         t->prev_sleep = NULL;
+            //         // ===============================================
+            //     }
+                
+            //     // 移动到刚才保存的下一个节点继续遍历
+            //     t = next_t;
+            // }
+            
+            // // 遍历结束，触发当前任务的时间片检查与调度
+            yield();
+        }
+        break;
 	case SupervisorExternal:
 		irq = plic_claim();
 		if (irq == UART0_IRQ) {

@@ -45,8 +45,8 @@ static void bzero(int dev, int bno)
 	struct buf *bp;
 	bp = bread(dev, bno);
 	memset(bp->data, 0, BSIZE);
-	bwrite(bp);
-	brelse(bp);
+	bwrite(bp);	// 立刻写回防止掉电
+	brelse(bp);	
 }
 
 // Blocks.
@@ -58,7 +58,7 @@ static uint balloc(uint dev)
 	struct buf *bp;
 
 	bp = 0;
-	for (b = 0; b < sb.size; b += BPB) {
+	for (b = 0; b < sb.size; b += BPB) {	// 
 		bp = bread(dev, BBLOCK(b, sb));
 		for (bi = 0; bi < BPB && b + bi < sb.size; bi++) {
 			m = 1 << (bi % 8);
@@ -163,6 +163,7 @@ static struct inode *iget(uint dev, uint inum)
 	if (empty == 0)
 		panic("iget: no inodes");
 
+	// 分配一个
 	ip = empty;
 	ip->dev = dev;
 	ip->inum = inum;
@@ -180,6 +181,8 @@ struct inode *idup(struct inode *ip)
 }
 
 // Reads the inode from disk if necessary.
+// 从磁盘中将dinode所在block拷贝进内存
+// 然后将dinode的内容拷贝到inode中
 void ivalid(struct inode *ip)
 {
 	struct buf *bp;

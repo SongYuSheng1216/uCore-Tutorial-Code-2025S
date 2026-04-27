@@ -6,13 +6,14 @@
 #include "queue.h"
 
 struct proc pool[NPROC];
+struct thread *sleep_queue_head = NULL;
 __attribute__((aligned(16))) char kstack[NPROC][NTHREAD][KSTACK_SIZE];
 __attribute__((aligned(4096))) char trapframe[NPROC][NTHREAD][TRAP_PAGE_SIZE];
 
 extern char boot_stack_top[];
 struct thread *current_thread;
 struct thread idle;
-struct queue task_queue;
+struct queue_prio task_queue;
 
 int procid()
 {
@@ -55,7 +56,7 @@ void proc_init()
 	// for procid() and threadid()
 	idle.process = pool;
 	idle.tid = -1;
-	init_queue(&task_queue, QUEUE_SIZE, process_queue_data);
+	init_queue_prio(&task_queue, QUEUE_SIZE, process_queue_data);
 }
 
 int allocpid()
@@ -95,7 +96,7 @@ int task_to_id(struct thread *t)
 
 struct thread *fetch_task()
 {
-	int index = pop_queue(&task_queue);
+	int index = pop_queue_prio(&task_queue);
 	struct thread *t = id_to_task(index);
 	if (t == NULL) {
 		debugf("No task to fetch\n");
@@ -108,11 +109,18 @@ struct thread *fetch_task()
 	return t;
 }
 
+// 需要做的事情是
+// 1. 放进队列前，增加当前进程的stride
 void add_task(struct thread *t)
 {
 	int task_id = task_to_id(t);
 	int pid = t->process->pid;
-	push_queue(&task_queue, task_id);
+	//push_queue(&task_queue, task_id);
+
+	uint64 pass = 65536 / t->prio.priority;
+	t->prio.stride += pass;
+	push_queue_prio(&task_queue, task_id, t->prio.stride);	// 所有和task_queue相关的都要检查
+
 	tracef("add index %d(pid=%d, tid=%d, addr=%p) to task queue", task_id,
 	       pid, t->tid, (uint64)t);
 }
@@ -214,6 +222,13 @@ found:
 	memset(&t->context, 0, sizeof(t->context));
 	t->context.ra = (uint64)usertrapret;
 	t->context.sp = t->kstack + KSTACK_SIZE;
+
+	t->prio.priority = 16;	// 默认优先级为1
+	t->prio.stride = 0;	// 初始pass值为0
+
+	t->time_sleep = 0;	// 初始不睡眠
+	t->next_sleep = NULL;
+	t->prev_sleep = NULL;
 	// we do not add thread to scheduler immediately
 	debugf("allocthread p: %d, o: %d, t: %d, e: %p, sp: %p, spp: %p",
 	       p->pid, (p - pool), t->tid, entry, t->ustack,
@@ -356,7 +371,8 @@ int fork()
 	add_task(nt);
 	return np->pid;
 }
-
+// 为新程序在主线程的用户栈上布置好 argc 和 argv，并设置好 sp 和 a1 寄存器
+// 使新程序启动时能通过 main(argc, argv) 获得参数。
 int push_argv(struct proc *p, char **argv)
 {
 	uint64 argc, ustack[MAX_ARG_NUM + 1];
@@ -401,18 +417,24 @@ int exec(char *path, char **argv)
 	infof("exec : %s\n", path);
 	struct inode *ip;
 	struct proc *p = curr_proc();
+	// 通过路径找到文件的 inode 
 	if ((ip = namei(path)) == 0) {
 		errorf("invalid file name %s\n", path);
 		return -1;
 	}
 	// free current main thread's ustack and trapframe
+	// 释放当前主线程的用户栈和 trapframe
 	struct thread *t = curr_thread();
 	freethread(t);
 	t->state = T_UNUSED;
+	// 解除整个用户页表的所有映射（释放所有用户内存）
 	uvmunmap(p->pagetable, 0, p->max_page, 1);
+	// 加载可执行文件
 	bin_loader(ip, p);
+	// 释放 inode 引用
 	iput(ip);
 	t->state = RUNNING;
+	// 布置用户栈上的 argc/argv，返回 argc（最终会写入 a0）
 	return push_argv(p, argv);
 }
 

@@ -4,6 +4,8 @@
 #include "riscv.h"
 #include "types.h"
 
+#define UART_BASE 0x10000000L  
+
 void kvm_init();
 void kvmmap(pagetable_t, uint64, uint64, uint64, int);
 int mappages(pagetable_t, uint64, uint64, uint64, int);

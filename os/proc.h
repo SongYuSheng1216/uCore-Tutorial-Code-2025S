@@ -10,6 +10,21 @@
 #define FD_BUFFER_SIZE (16)
 #define LOCK_POOL_SIZE (8)
 
+struct vma{
+	uint64 start_addr;
+	uint64 end_addr;
+	uint64 length;
+	uint64 page_num;
+	struct vma* front_vma;
+	struct vma* next_vma;
+};
+
+struct priority_proc{
+	uint64 priority;
+	uint64 stride;
+};
+
+
 struct file;
 
 // Saved registers for kernel context switches.
@@ -42,6 +57,10 @@ struct thread {
 	struct trapframe *trapframe; // data page for trampoline.S
 	struct context context; // swtch() here to run process
 	uint64 exit_code;
+	struct priority_proc prio;
+	uint64 time_sleep; // 睡眠截止时间，单位为tick
+	struct thread* next_sleep; // 睡眠链表指针
+	struct thread* prev_sleep; // 睡眠链表指针
 };
 
 enum procstate { P_UNUSED, P_USED, ZOMBIE };

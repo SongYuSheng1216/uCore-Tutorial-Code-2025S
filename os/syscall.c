@@ -7,6 +7,8 @@
 #include "timer.h"
 #include "trap.h"
 
+extern struct thread *sleep_queue_head;
+
 uint64 console_write(uint64 va, uint64 len)
 {
 	struct proc *p = curr_proc();
@@ -93,7 +95,8 @@ uint64 sys_gettimeofday(uint64 val, int _tz)
 	struct proc *p = curr_proc();
 	uint64 cycle = get_cycle();
 	TimeVal t;
-	t.sec = cycle / CPU_FREQ;
+	// CPU_FREQ 是每秒的时钟周期数，除以它就得到了秒数，余数部分乘以 1000000 再除以 CPU_FREQ 就得到了微秒数
+	t.sec = cycle / CPU_FREQ;	
 	t.usec = (cycle % CPU_FREQ) * 1000000 / CPU_FREQ;
 	copyout(p->pagetable, val, (char *)&t, sizeof(TimeVal));
 	return 0;
@@ -220,6 +223,23 @@ int sys_thread_create(uint64 entry, uint64 arg)
 int sys_gettid()
 {
 	return curr_thread()->tid;
+}
+
+// 纯裸机的非阻塞读取！
+int hardware_uart_try_getc(void) {
+    // 检查 LSR 的第 0 位
+    if ((*UART_LSR) & 0x01) {
+        // 如果是 1，说明缓冲区有字符，直接读走
+        return *UART_RBR;
+    } else {
+        // 如果是 0，说明没按键，瞬间返回 -1，绝不阻塞！
+        return -1;
+    }
+}
+
+int consgetc_noblock()
+{
+	return hardware_uart_try_getc();
 }
 
 int sys_waittid(int tid)
@@ -501,7 +521,30 @@ int sys_enable_deadlock_detect(int is_enable)
 	return 0;
 }
 
+int sys_sleep(int ms) {
+    struct thread *t = curr_thread();
+    
+    // 1秒=12.5M次，1秒等于1000ms，1毫秒走过的时钟周期就是 CPU_FREQ/1000
+    uint64 cycles_per_ms = CPU_FREQ / 1000; 
+    t->time_sleep = get_cycle() + (ms * cycles_per_ms); 
+    t->state = SLEEPING;
+    
+    // === 双向链表头插法 (必须处理好 prev 和 next) ===
+    t->next_sleep = sleep_queue_head;
+    t->prev_sleep = NULL; // 新节点作为头部，prev 必须是 NULL
+    
+    if (sleep_queue_head != NULL) {
+        // 如果链表本来不为空，要把原来的头节点的 prev 指向新节点
+        sleep_queue_head->prev_sleep = t;
+    }
+    
+    // 更新全局链表头
+    sleep_queue_head = t;
 
+    // 主动让出 CPU
+    sched();
+	return 0;
+}
 
 extern char trap_page[];
 
@@ -597,6 +640,12 @@ void syscall()
 	// OPT: (2) you may need to add case SYS_enable_deadlock_detect here
 	case SYS_enable_deadlock_detect:
 		ret = sys_enable_deadlock_detect(args[0]);
+		break;
+	case SYS_getchar_noblock:
+		ret = consgetc_noblock();
+		break;
+	case SYS_sleep:
+		ret = sys_sleep(args[0]);
 		break;
 	default:
 		ret = -1;

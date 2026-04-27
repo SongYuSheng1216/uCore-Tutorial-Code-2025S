@@ -53,23 +53,27 @@ struct dinode {
 };
 
 // Inodes per block.
+// 一个block可以装多少inode
 #define IPB (BSIZE / sizeof(struct dinode))
 
 // Block containing inode i
+// inode i所在的block号码
 #define IBLOCK(i, sb) ((i) / IPB + sb.inodestart)
 
 // Bitmap bits per block
+// 一个block可以装多少位的bitmap
 #define BPB (BSIZE * 8)
 
 // Block of free map containing bit for block b
+// block b所在的bitmap block号码
 #define BBLOCK(b, sb) ((b) / BPB + sb.bmapstart)
 
 // Directory is a file containing a sequence of dirent structures.
 #define DIRSIZ 14
 
 struct dirent {
-	ushort inum;
-	char name[DIRSIZ];
+	ushort inum;		// 文件名对应的inode number
+	char name[DIRSIZ];	// 文件名
 };
 
 // file.h

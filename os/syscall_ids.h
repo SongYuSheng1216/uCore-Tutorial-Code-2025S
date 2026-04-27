@@ -306,3 +306,5 @@
 #define SYS_condvar_create 471
 #define SYS_condvar_signal 472
 #define SYS_condvar_wait 473
+#define SYS_getchar_noblock 500 // 自己定义
+#define SYS_sleep 501 // 自己定义
