@@ -11,9 +11,9 @@ struct mutex *mutex_create(int blocking)
 	struct mutex *m = &p->mutex_pool[p->next_mutex_id];
 	p->next_mutex_id++;
 	m->blocking = blocking;
-	m->locked = 0;
-	if (blocking) {
-		// blocking mutex need wait queue but spinning mutex not
+	m->locked = 0;                                                                                                                                                                                                                                                                                                                                                                                     
+	if (blocking) {	// 阻塞情况
+		// 被阻塞的线程入队
 		init_queue(&m->wait_queue, WAIT_QUEUE_MAX_LENGTH,
 			   m->_wait_queue_data);
 	}
@@ -24,27 +24,19 @@ void mutex_lock(struct mutex *m)
 {
 	if (!m->locked) {	// 锁未被占用，直接拿到锁
 		m->locked = 1;
-		debugf("lock a free mutex");
 		return;
 	}
 	if (!m->blocking) {
-		// spin mutex will just poll
-		debugf("try to lock spin mutex");
-		while (m->locked) {	// 自旋锁
+		while (m->locked) {	// 自旋锁，这里粗糙了，直接切换线程
 			yield();
-		}
-		debugf("lock spin mutex after some trials");
+		};
 		return;
 	}
-	// blocking mutex will wait in the queue
+	// 阻塞
 	struct thread *t = curr_thread();
 	push_queue(&m->wait_queue, task_to_id(t));	// 将当前线程加入锁m等待队列
-	// don't forget to change thread state to SLEEPING
 	t->state = SLEEPING;
-	debugf("block to wait for mutex");
 	sched();
-	debugf("blocking mutex passed to me");
-	// here lock is released (with locked = 1) and passed to me, so just do nothing
 }
 
 void mutex_unlock(struct mutex *m)
@@ -52,99 +44,101 @@ void mutex_unlock(struct mutex *m)
 	if (m->blocking) {
 		struct thread *t = id_to_task(pop_queue(&m->wait_queue));
 		if (t == NULL) {
-			// Without waiting thread, just release the lock
+			// 没有等待调度锁的线程
 			m->locked = 0;	// 18
-			debugf("blocking mutex released");
 		} else {
-			// Or we should give lock to next thread
+			// 存在有等待调度锁的线程，直接把锁传递给它
 			t->state = RUNNABLE;	// 21
 			add_task(t);	// 22
-			debugf("blocking mutex passed to thread %d", t->tid);
 		}
 	} else {
 		m->locked = 0;
-		debugf("spin mutex unlocked");
 	}
 }
 
-struct semaphore *semaphore_create(int count)
+struct sema *sema_create(int count)
 {
 	struct proc *p = curr_proc();
-	if (p->next_semaphore_id >= LOCK_POOL_SIZE) {
+	// 超过信号量池大小限制，无法创建更多信号量
+	if (p->next_sema_id >= LOCK_POOL_SIZE) {
 		return NULL;
 	}
-	struct semaphore *s = &p->semaphore_pool[p->next_semaphore_id];
-	p->next_semaphore_id++;
+	struct sema *s = &p->sema_pool[p->next_sema_id];
+	p->next_sema_id++;
+	// 信号量数值
 	s->count = count;
+	// 初始化信号量的队列
 	init_queue(&s->wait_queue, WAIT_QUEUE_MAX_LENGTH, s->_wait_queue_data);
 	return s;
 }
 
-void semaphore_up(struct semaphore *s)	// V 操作
+// count > 0：有这么多个可用资源，无等待线程
+// count = 0：无可用资源，也无等待线程
+// count < 0：无可用资源，且有 |count| 个线程在等待
+
+void sema_V(struct sema *s)	// V 操作
 {
+	// 释放了一个资源，唤醒一个等待的线程（如果有的话）
 	s->count++;
 	if (s->count <= 0) {
-		// count <= 0 after up means wait queue not empty
+		// 此时有线程在等待信号量，需要唤醒一个线程
 		struct thread *t = id_to_task(pop_queue(&s->wait_queue));
 		if (t == NULL) {
-			panic("count <= 0 after up but wait queue is empty?");
+			panic();
 		}
 		t->state = RUNNABLE;
 		add_task(t);
-		debugf("semaphore up and notify another task");
 	}
-	debugf("semaphore up from %d to %d", s->count - 1, s->count);
 }
 
-void semaphore_down(struct semaphore *s)	// P 操作
+void sema_P(struct sema *s)	// P 操作
 {
 	s->count--;
 	if (s->count < 0) {
-		// s->count < 0 means need to wait (state=SLEEPING)
+		// 此时没有资源了，需要阻塞当前线程
 		struct thread *t = curr_thread();
 		push_queue(&s->wait_queue, task_to_id(t));
 		t->state = SLEEPING;
-		debugf("semaphore down to %d and wait...", s->count);
 		sched();
-		debugf("semaphore up to %d and wake up", s->count);
 	}
-	debugf("finish semaphore_down with count = %d", s->count);
 }
 
-struct condvar *condvar_create()
+struct cond *cond_create()
 {
 	struct proc *p = curr_proc();
-	if (p->next_condvar_id >= LOCK_POOL_SIZE) {
+	// 超过池子限制
+	if (p->next_cond_id >= LOCK_POOL_SIZE) {
 		return NULL;
 	}
-	struct condvar *c = &p->condvar_pool[p->next_condvar_id];
-	p->next_condvar_id++;
+	struct cond *c = &p->cond_pool[p->next_cond_id];
+	p->next_cond_id++;
 	init_queue(&c->wait_queue, WAIT_QUEUE_MAX_LENGTH, c->_wait_queue_data);
 	return c;
 }
 
-void cond_signal(struct condvar *cond)
+// ch8b_test_condvar.c可以测试
+
+void cond_notify(struct cond *cond)
 {
+	// 通知等待的线程可以运行了
 	struct thread *t = id_to_task(pop_queue(&cond->wait_queue));
 	if (t) {
 		t->state = RUNNABLE;
 		add_task(t);
-		debugf("signal wake up thread %d", t->tid);
 	} else {
-		debugf("dummpy signal");
+
 	}
 }
 
-void cond_wait(struct condvar *cond, struct mutex *m)
+void cond_wait(struct cond *cond, struct mutex *m)
 {
-	// conditional variable will unlock the mutex first and lock it again on return
+	// 释放锁，供notify通知的时候获取锁
 	mutex_unlock(m);
 	struct thread *t = curr_thread();
-	// now just wait for cond
+	// 等待
 	push_queue(&cond->wait_queue, task_to_id(t));
 	t->state = SLEEPING;
-	debugf("wait for cond");
 	sched();
-	debugf("wake up from cond");
+	// 被唤醒重新开始运行时候，自动获取锁
 	mutex_lock(m);
 }

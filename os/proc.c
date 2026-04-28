@@ -74,7 +74,7 @@ int alloctid(const struct proc *process)
 	return -1;
 }
 
-// get task by unique task id
+// 解开task_id，参考task_to_id的计算方法，反过来算出pool_id和tid
 struct thread *id_to_task(int index)
 {
 	if (index < 0) {
@@ -86,7 +86,9 @@ struct thread *id_to_task(int index)
 	return t;
 }
 
-// ncode unique task id for each thread
+// 计算出当前进程是第几个进程的
+// 然后乘以一个进程拥有的线程数，再加上自身线程在本进程的tid
+// 获得task_id
 int task_to_id(struct thread *t)
 {
 	int pool_id = t->process - pool;
@@ -99,13 +101,9 @@ struct thread *fetch_task()
 	int index = pop_queue_prio(&task_queue);
 	struct thread *t = id_to_task(index);
 	if (t == NULL) {
-		debugf("No task to fetch\n");
+		panic();
 		return t;
 	}
-	int tid = t->tid;
-	int pid = t->process->pid;
-	tracef("fetch index %d(pid=%d, tid=%d, addr=%p) from task queue", index,
-	       pid, tid, (uint64)t);
 	return t;
 }
 
@@ -114,20 +112,14 @@ struct thread *fetch_task()
 void add_task(struct thread *t)
 {
 	int task_id = task_to_id(t);
-	int pid = t->process->pid;
+	// int pid = t->process->pid;
 	//push_queue(&task_queue, task_id);
 
 	uint64 pass = 65536 / t->prio.priority;
 	t->prio.stride += pass;
 	push_queue_prio(&task_queue, task_id, t->prio.stride);	// 所有和task_queue相关的都要检查
-
-	tracef("add index %d(pid=%d, tid=%d, addr=%p) to task queue", task_id,
-	       pid, t->tid, (uint64)t);
 }
 
-// Look in the process table for an UNUSED proc.
-// If found, initialize state required to run in the kernel.
-// If there are no free procs, or a memory allocation fails, return 0.
 struct proc *allocproc()
 {
 	struct proc *p;
@@ -148,19 +140,19 @@ found:
 	p->pagetable = uvmcreate();
 	memset((void *)p->files, 0, sizeof(struct file *) * FD_BUFFER_SIZE);
 	p->next_mutex_id = 0;
-	p->next_semaphore_id = 0;
-	p->next_condvar_id = 0;
+	p->next_sema_id = 0;
+	p->next_cond_id = 0;
 	// OPT: (1) you may initialize your new proc variables here
 	for(int i = 0; i < LOCK_POOL_SIZE; i++){
 		p->available_mutex[i] = 0;
-		p->available_semaphore[i] = 0;
+		p->available_sema[i] = 0;
 	}
 	for(int i = 0; i < NTHREAD; i++){
 		for(int j = 0; j < LOCK_POOL_SIZE; j++){
 			p->mutex_allocation[i][j] = 0;
 			p->mutex_request[i][j] = 0;
-			p->semaphore_allocation[i][j] = 0;
-			p->semaphore_request[i][j] = 0;
+			p->sema_allocation[i][j] = 0;
+			p->sema_request[i][j] = 0;
 		}
 	}
 	p->deadlock_detect_enabled = 0;
@@ -247,18 +239,17 @@ int init_stdio(struct proc *p)
 	return 0;
 }
 
-// Scheduler never returns.  It loops, doing:
-//  - choose a process to run.
-//  - swtch to start running that process.
-//  - eventually that process transfers control
-//    via swtch back to the scheduler.
+// 从不返回的调度函数。它循环执行操作：
+//  1.选择一个要运行的进程。
+//  2.切换到该进程开始运行。
+//  3.最终该进程通过切换回调度器来转移控制权。
 void scheduler()
 {
 	struct thread *t;
 	for (;;) {
 		t = fetch_task();
 		if (t == NULL) {
-			panic("all app are over!\n");
+			panic("");
 		}
 		// throw out freed threads
 		if (t->state != RUNNABLE) {
@@ -272,13 +263,6 @@ void scheduler()
 	}
 }
 
-// Switch to scheduler.  Must hold only p->lock
-// and have changed proc->state. Saves and restores
-// intena because intena is a property of this
-// kernel thread, not this CPU. It should
-// be proc->intena and proc->noff, but that would
-// break in the few places where a lock is held but
-// there's no process.
 void sched()
 {
 	struct thread *t = curr_thread();
@@ -287,7 +271,6 @@ void sched()
 	swtch(&t->context, &idle.context);
 }
 
-// Give up the CPU for one scheduling round.
 void yield()
 {
 	current_thread->state = RUNNABLE;
@@ -340,17 +323,17 @@ int fork()
 	struct proc *np;
 	struct proc *p = curr_proc();
 	int i;
-	// Allocate process.
+	// 分配一个新的进程
 	if ((np = allocproc()) == 0) {
 		panic("allocproc\n");
 	}
-	// Copy user memory from parent to child.
+	// 拷贝父进程的用户内存到新进程
 	if (uvmcopy(p->pagetable, np->pagetable, p->max_page) < 0) {
 		panic("uvmcopy\n");
 	}
 	np->max_page = p->max_page;
 	np->ustack_base = p->ustack_base;
-	// Copy file table to new proc
+	// 拷贝父进程的文件描述符表
 	for (i = 0; i < FD_BUFFER_SIZE; i++) {
 		if (p->files[i] != NULL) {
 			// TODO: f->type == STDIO ?
@@ -360,13 +343,15 @@ int fork()
 	}
 
 	np->parent = p;
-	// currently only copy main thread
+	// 为新进程的主线程分配资源，由于拷贝了陷阱帧所有信息
+	// 因此epc也是和原来的线程一样，都会回到fork下一行代码
 	struct thread *nt = &np->threads[allocthread(np, 0, 0)],
 		      *t = &p->threads[0];
 	// copy saved user registers.
 	*(nt->trapframe) = *(t->trapframe);
-	// Cause fork to return 0 in the child.
+	// 子线程返回0的约定
 	nt->trapframe->a0 = 0;
+	// 加入调度队列
 	nt->state = RUNNABLE;
 	add_task(nt);
 	return np->pid;
@@ -446,28 +431,30 @@ int wait(int pid, int *code)
 	struct thread *t = curr_thread();
 
 	for (;;) {
-		// Scan through table looking for exited children.
 		havekids = 0;
+		// 在当前进程的线程池中寻找子进程（parent == p）并且 pid 匹配的进程
+		// pid小于等于0，表示随便找一个子进程回收
 		for (np = pool; np < &pool[NPROC]; np++) {
 			if (np->state != P_UNUSED && np->parent == p &&
 			    (pid <= 0 || np->pid == pid)) {
 				havekids = 1;
-				if (np->state == ZOMBIE) {
+				if (np->state == ZOMBIE) {	// 如果找到了一个僵尸子进程，就回收它
 					// Found one.
 					np->state = P_UNUSED;
 					pid = np->pid;
-					*code = np->exit_code;
-					memset((void *)np->threads[0].kstack, 9,
+					*code = np->exit_code;	// 返回子线程退出码
+					memset((void *)np->threads[0].kstack, 9,	// 回收进程的主线程的内核栈
 					       KSTACK_SIZE);
 					return pid;
 				}
 			}
 		}
-		if (!havekids) {
+		if (!havekids) {	// 压根没有子进程，报错
 			return -1;
 		}
+		// 如果有子进程但是没有僵尸子进程，说明子进程还在运行，当前线程需要等待
 		t->state = RUNNABLE;
-		add_task(t);
+		add_task(t);	// 切走
 		sched();
 	}
 }

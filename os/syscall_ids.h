@@ -299,12 +299,12 @@
 #define SYS_mutex_create 463
 #define SYS_mutex_lock 464
 #define SYS_mutex_unlock 466
-#define SYS_semaphore_create 467
-#define SYS_semaphore_up 468
+#define SYS_sema_create 467
+#define SYS_sema_V 468
 #define SYS_enable_deadlock_detect 469
-#define SYS_semaphore_down 470
-#define SYS_condvar_create 471
-#define SYS_condvar_signal 472
-#define SYS_condvar_wait 473
+#define SYS_sema_P 470
+#define SYS_cond_create 471
+#define SYS_cond_notify 472
+#define SYS_cond_wait 473
 #define SYS_getchar_noblock 500 // 自己定义
 #define SYS_sleep 501 // 自己定义

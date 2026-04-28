@@ -13,7 +13,6 @@ extern struct thread *sleep_queue_head;
 extern struct queue_prio task_queue;
 void kerneltrap();
 
-// set up to take exceptions and traps while in the kernel.
 void set_usertrap()
 {
 	w_stvec(((uint64)TRAMPOLINE + (uservec - trampoline)) & ~0x3); // DIRECT
@@ -24,7 +23,6 @@ void set_kerneltrap()
 	w_stvec((uint64)kernelvec & ~0x3); // DIRECT
 }
 
-// set up to take exceptions and traps while in the kernel.
 void trap_init()
 {
 	// intr_on();
@@ -112,10 +110,6 @@ void devintr(uint64 cause)
 	}
 }
 
-//
-// handle an interrupt, exception, or system call from user space.
-// called from trampoline.S
-//
 void usertrap()
 {
 	set_kerneltrap();
@@ -133,21 +127,16 @@ void usertrap()
 			trapframe->epc += 4;
 			syscall();
 			break;
-		case StoreMisaligned:
-		case StorePageFault:
-		case InstructionMisaligned:
-		case InstructionPageFault:
-		case LoadMisaligned:
 		case LoadPageFault:
 			errorf("%d in application, bad addr = %p, bad instruction = %p, "
 			       "core dumped.",
 			       cause, r_stval(), trapframe->epc);
 			exit(-2);
 			break;
-		case IllegalInstruction:
-			errorf("IllegalInstruction in application, core dumped.");
-			exit(-3);
-			break;
+		// case IllegalInstruction:
+		// 	errorf("IllegalInstruction in application, core dumped.");
+		// 	exit(-3);
+		// 	break;
 		default:
 			unknown_trap();
 			break;
@@ -156,9 +145,8 @@ void usertrap()
 	usertrapret();
 }
 
-//
-// return to user space
-//
+
+// 返回 user space
 void usertrapret()
 {
 	set_usertrap();
@@ -170,20 +158,14 @@ void usertrapret()
 	trapframe->kernel_hartid = r_tp(); // unuesd
 
 	w_sepc(trapframe->epc);
-	// set up the registers that trampoline.S's sret will use
-	// to get to user space.
-
-	// set S Previous Privilege mode to User.
 	uint64 x = r_sstatus();
-	x &= ~SSTATUS_SPP; // clear SPP to 0 for user mode
-	x |= SSTATUS_SPIE; // enable interrupts in user mode
+	x &= ~SSTATUS_SPP; // 清除spp，表示返回用户模式
+	x |= SSTATUS_SPIE; // 允许用户模式中断
 	w_sstatus(x);
 
-	// tell trampoline.S the user page table to switch to.
 	uint64 satp = MAKE_SATP(curr_proc()->pagetable);
 	uint64 fn = TRAMPOLINE + (userret - trampoline);
 	uint64 trapframe_va = get_thread_trapframe_va(curr_thread()->tid);
-	debugf("return to user @ %p, sp @ %p", trapframe->epc, trapframe->sp);
 	((void (*)(uint64, uint64))fn)(trapframe_va, satp);
 }
 
@@ -201,12 +183,10 @@ void kerneltrap()
 	if (scause & (1ULL << 63)) {
 		devintr(scause & 0xff);
 	} else {
-		errorf("invalid trap from kernel: %p, stval = %p sepc = %p\n",
-		       scause, r_stval(), sepc);
+		// 不应该进入这个分支，目前内核只开启了外部中断和时钟中断
 		exit(-1);
 	}
-	// the yield() may have caused some traps to occur,
-	// so restore trap registers for use by kernelvec.S's sepc instruction.
+
 	w_sepc(sepc);
 	w_sstatus(sstatus);
 }

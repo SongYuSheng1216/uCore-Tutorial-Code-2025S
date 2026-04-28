@@ -4,7 +4,7 @@
 
 #include "types.h"
 // queue data for processing scheduling only
-// for queue for wait queue of mutex/semaphore/condvar, provide other data
+// for queue for wait queue of mutex/sema/cond, provide other data
 extern int process_queue_data[QUEUE_SIZE];
 
 struct queue {

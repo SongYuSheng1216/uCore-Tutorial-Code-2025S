@@ -208,14 +208,17 @@ uint64 sys_close(int fd)
 int sys_thread_create(uint64 entry, uint64 arg)
 {
 	struct proc *p = curr_proc();
+	// 分配线程
+	// entry是新线程的入口地址
+	// allocthread会将entry给到epc的
 	int tid = allocthread(p, entry, 1);
-	if (tid < 0) {
-		errorf("fail to create thread");
+	if (tid < 0) {	// 分配失败
 		return -1;
 	}
 	struct thread *t = &p->threads[tid];
+	// 获取参数
 	t->trapframe->a0 = arg;
-	t->state = RUNNABLE;
+	t->state = RUNNABLE;	// 入队，调度
 	add_task(t);
 	return tid;
 }
@@ -244,21 +247,27 @@ int consgetc_noblock()
 
 int sys_waittid(int tid)
 {
+	// 无效tid
 	if (tid < 0 || tid >= NTHREAD) {
 		errorf("unexpected tid %d", tid);
 		return -1;
 	}
 	struct thread *t = &curr_proc()->threads[tid];
+	// 线程没使用或者回收自己，返回错误
 	if (t->state == T_UNUSED || tid == curr_thread()->tid) {
 		return -1;
 	}
+	// 如果线程还在运行，不是僵尸态，返回-2
+	// 用户态的syscall会执行yield，调度器会切走这个线程
+	// 等到它再次被调度回来时才会检查状态，这时候如果线程已经退出了，就可以回收了
 	if (t->state != EXITED) {
 		return -2;
 	}
+	// 回收线程资源
 	memset((void *)t->kstack, 7, KSTACK_SIZE);
 	t->tid = -1;
 	t->state = T_UNUSED;
-	return t->exit_code;
+	return t->exit_code;	// 返回线程退出码
 }
 
 /*
@@ -266,7 +275,7 @@ int sys_waittid(int tid)
 *					int deadlock_detect(const int available[LOCK_POOL_SIZE],
 *						const int allocation[NTHREAD][LOCK_POOL_SIZE],
 *						const int request[NTHREAD][LOCK_POOL_SIZE])
-*				for both mutex and semaphore detect, you can also
+*				for both mutex and sema detect, you can also
 *				use this idea or just ignore it.
 */
 
@@ -319,7 +328,7 @@ int deadlock_detect(const int available[LOCK_POOL_SIZE],const int allocation[NTH
 	return 0;	// 所有线程都完成了，没有死锁
 }
 
-// 其实送进来的线程已经分配了资源，在mutex_lock 或 semaphore_down，调用这个deadlock_detect的上层函数就已经修改了available和allocation
+// 其实送进来的线程已经分配了资源，在mutex_lock 或 sema_P，调用这个deadlock_detect的上层函数就已经修改了available和allocation
 
 int sys_mutex_create(int blocking)
 {
@@ -391,25 +400,25 @@ int sys_mutex_unlock(int mutex_id)
 	return 0;
 }
 
-int sys_semaphore_create(int res_count)
+int sys_sema_create(int res_count)
 {
-	struct semaphore *s = semaphore_create(res_count);
+	struct sema *s = sema_create(res_count);
 	if (s == NULL) {
-		errorf("fail to create semaphore: out of resource");
+		errorf("fail to create sema: out of resource");
 		return -1;
 	}
 	// OPT: (4-2) You may want to maintain some variables for detect here
-	int sem_id = s - curr_proc()->semaphore_pool;
-	curr_proc()->available_semaphore[sem_id] = res_count;	// 可用的信号量数量加1
-	debugf("create semaphore %d", sem_id);
+	int sem_id = s - curr_proc()->sema_pool;
+	curr_proc()->available_sema[sem_id] = res_count;	// 可用的信号量数量加1
+	debugf("create sema %d", sem_id);
 	return sem_id;
 }
 
-int sys_semaphore_up(int semaphore_id)// V操作，相当于锁的释放
+int sys_sema_V(int sema_id)// V操作，相当于锁的释放
 {
-	if (semaphore_id < 0 ||
-	    semaphore_id >= curr_proc()->next_semaphore_id) {
-		errorf("Unexpected semaphore id %d", semaphore_id);
+	if (sema_id < 0 ||
+	    sema_id >= curr_proc()->next_sema_id) {
+		errorf("Unexpected sema id %d", sema_id);
 		return -1;
 	}
 	// OPT: (4-2) You may want to maintain some variables for detect here
@@ -417,87 +426,87 @@ int sys_semaphore_up(int semaphore_id)// V操作，相当于锁的释放
 		int tid = curr_thread()->tid;
 
 		// 1. 确保该线程确实持有这个信号量，防止误操作
-		if (curr_proc()->semaphore_allocation[tid][semaphore_id] == 0) {
-			errorf("Thread %d tries to up semaphore %d which it doesn't hold", tid, semaphore_id);
+		if (curr_proc()->sema_allocation[tid][sema_id] == 0) {
+			errorf("Thread %d tries to up sema %d which it doesn't hold", tid, sema_id);
 			return -1;
 		}
 		// 2. 将分配矩阵设为 0（不再持有）
-		curr_proc()->semaphore_allocation[tid][semaphore_id]--;
+		curr_proc()->sema_allocation[tid][sema_id]--;
 		// 3. 将可用矩阵设为 1（信号量变回可用状态，其他线程可以竞争了）
-		curr_proc()->available_semaphore[semaphore_id]++;
+		curr_proc()->available_sema[sema_id]++;
 	}
-	semaphore_up(&curr_proc()->semaphore_pool[semaphore_id]);
+	sema_V(&curr_proc()->sema_pool[sema_id]);
 	return 0;
 }
 
-int sys_semaphore_down(int semaphore_id)
+int sys_sema_P(int sema_id)
 {
-	if (semaphore_id < 0 ||
-	    semaphore_id >= curr_proc()->next_semaphore_id) {
-		errorf("Unexpected semaphore id %d", semaphore_id);
+	if (sema_id < 0 ||
+	    sema_id >= curr_proc()->next_sema_id) {
+		errorf("Unexpected sema id %d", sema_id);
 		return -1;
 	}
 	// OPT: (4-2) You may want to maintain some variables for detect
 	//       or call your detect algorithm here
 	if(curr_proc()->deadlock_detect_enabled == 1){
 		// 调用死锁检测算法
-		curr_proc()->semaphore_request[curr_thread()->tid][semaphore_id] = 1;
+		curr_proc()->sema_request[curr_thread()->tid][sema_id] = 1;
 
-		if(deadlock_detect(curr_proc()->available_semaphore, curr_proc()->semaphore_allocation, curr_proc()->semaphore_request) == 1){
-			errorf("Deadlock detected when downing semaphore %d", semaphore_id);
-			curr_proc()->semaphore_request[curr_thread()->tid][semaphore_id] = 0; // 回滚请求
+		if(deadlock_detect(curr_proc()->available_sema, curr_proc()->sema_allocation, curr_proc()->sema_request) == 1){
+			errorf("Deadlock detected when downing sema %d", sema_id);
+			curr_proc()->sema_request[curr_thread()->tid][sema_id] = 0; // 回滚请求
 			return -0xDEAD;
 		}
 	}
-	semaphore_down(&curr_proc()->semaphore_pool[semaphore_id]);
+	sema_P(&curr_proc()->sema_pool[sema_id]);
 	if(curr_proc()->deadlock_detect_enabled) {
 		int tid = curr_thread()->tid;
 
 		// 1. 将请求矩阵设为 0（请求已经满足了）
-		curr_proc()->semaphore_request[tid][semaphore_id] = 0;
+		curr_proc()->sema_request[tid][sema_id] = 0;
 
 		// 2. 将分配矩阵设为 1（现在持有这个资源了）
-		curr_proc()->semaphore_allocation[tid][semaphore_id]++;
+		curr_proc()->sema_allocation[tid][sema_id]++;
 
 		// 3. 将可用矩阵设为 0（资源被占用了，其他线程不能竞争了）
-		curr_proc()->available_semaphore[semaphore_id]--;
+		curr_proc()->available_sema[sema_id]--;
 	}
 	return 0;
 }
 
-int sys_condvar_create()
+int sys_cond_create()
 {
-	struct condvar *c = condvar_create();
+	struct cond *c = cond_create();
 	if (c == NULL) {
-		errorf("fail to create condvar: out of resource");
+		errorf("fail to create cond: out of resource");
 		return -1;
 	}
-	int cond_id = c - curr_proc()->condvar_pool;
-	debugf("create condvar %d", cond_id);
+	int cond_id = c - curr_proc()->cond_pool;
+	debugf("create cond %d", cond_id);
 	return cond_id;
 }
 
-int sys_condvar_signal(int cond_id)
+int sys_cond_notify(int cond_id)
 {
-	if (cond_id < 0 || cond_id >= curr_proc()->next_condvar_id) {
-		errorf("Unexpected condvar id %d", cond_id);
+	if (cond_id < 0 || cond_id >= curr_proc()->next_cond_id) {
+		errorf("Unexpected cond id %d", cond_id);
 		return -1;
 	}
-	cond_signal(&curr_proc()->condvar_pool[cond_id]);
+	cond_notify(&curr_proc()->cond_pool[cond_id]);
 	return 0;
 }
 
-int sys_condvar_wait(int cond_id, int mutex_id)
+int sys_cond_wait(int cond_id, int mutex_id)
 {
-	if (cond_id < 0 || cond_id >= curr_proc()->next_condvar_id) {
-		errorf("Unexpected condvar id %d", cond_id);
+	if (cond_id < 0 || cond_id >= curr_proc()->next_cond_id) {
+		errorf("Unexpected cond id %d", cond_id);
 		return -1;
 	}
 	if (mutex_id < 0 || mutex_id >= curr_proc()->next_mutex_id) {
 		errorf("Unexpected mutex id %d", mutex_id);
 		return -1;
 	}
-	cond_wait(&curr_proc()->condvar_pool[cond_id],
+	cond_wait(&curr_proc()->cond_pool[cond_id],
 		  &curr_proc()->mutex_pool[mutex_id]);
 	return 0;
 }
@@ -515,7 +524,7 @@ int sys_enable_deadlock_detect(int is_enable)
 	// 还有两种情况
 	// 1. 死锁检测开启失败
 	// 2. 死锁检测开启成功，实现功能
-	// 功能，我目前的想法是：每次sys_mutex_lock和sys_semaphore_down的时候都调用死锁检测算法
+	// 功能，我目前的想法是：每次sys_mutex_lock和sys_sema_P的时候都调用死锁检测算法
 	// 如果检测到死锁了就打印死锁信息并且杀死相关线程
 	curr_proc()->deadlock_detect_enabled = 1;
 	return 0;
@@ -619,23 +628,23 @@ void syscall()
 	case SYS_mutex_unlock:
 		ret = sys_mutex_unlock(args[0]);
 		break;
-	case SYS_semaphore_create:
-		ret = sys_semaphore_create(args[0]);
+	case SYS_sema_create:
+		ret = sys_sema_create(args[0]);
 		break;
-	case SYS_semaphore_up:
-		ret = sys_semaphore_up(args[0]);
+	case SYS_sema_V:
+		ret = sys_sema_V(args[0]);
 		break;
-	case SYS_semaphore_down:
-		ret = sys_semaphore_down(args[0]);
+	case SYS_sema_P:
+		ret = sys_sema_P(args[0]);
 		break;
-	case SYS_condvar_create:
-		ret = sys_condvar_create();
+	case SYS_cond_create:
+		ret = sys_cond_create();
 		break;
-	case SYS_condvar_signal:
-		ret = sys_condvar_signal(args[0]);
+	case SYS_cond_notify:
+		ret = sys_cond_notify(args[0]);
 		break;
-	case SYS_condvar_wait:
-		ret = sys_condvar_wait(args[0], args[1]);
+	case SYS_cond_wait:
+		ret = sys_cond_wait(args[0], args[1]);
 		break;
 	// OPT: (2) you may need to add case SYS_enable_deadlock_detect here
 	case SYS_enable_deadlock_detect:

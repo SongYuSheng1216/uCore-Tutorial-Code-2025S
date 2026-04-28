@@ -106,7 +106,7 @@ int pop_queue_prio(struct queue_prio *q)
         q->empty = 1;
     }
 
-    // 注意：不要移动 q->front，因为我们是把空洞填到了 tail 处并收缩了 tail
+    // 不要移动 q->front，因为我们是把空洞填到了 tail 处并收缩了 tail
     return ret_value;
 }
 

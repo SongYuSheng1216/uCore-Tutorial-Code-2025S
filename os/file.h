@@ -8,7 +8,7 @@
 #define PIPESIZE (512)
 #define FILEPOOLSIZE (NPROC * FD_BUFFER_SIZE)
 
-// in-memory copy of an inode,it can be used to quickly locate file entities on disk
+// inode包含了文件的元信息和数据块地址等信息
 struct inode {
 	uint dev; // Device number
 	uint inum; // Inode number
@@ -20,7 +20,7 @@ struct inode {
 	// LAB4: You may need to add link count here
 };
 
-//a struct for pipe
+// 管道缓冲区
 struct pipe {
 	char data[PIPESIZE];
 	uint nread; // number of bytes read
@@ -30,7 +30,7 @@ struct pipe {
 };
 
 // file.h
-// Defines a file in memory that provides information about the current use of the file and the corresponding inode location
+// 文件描述符表项，包含了文件类型、引用计数、读写权限、指向管道或inod
 struct file {
 	enum { FD_NONE = 0, FD_PIPE, FD_INODE, FD_STDIO } type;
 	int ref; // reference count

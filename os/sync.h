@@ -15,26 +15,26 @@ struct mutex {
 	int _wait_queue_data[WAIT_QUEUE_MAX_LENGTH];	
 };
 
-struct semaphore {
+struct sema {
 	int count;
 	struct queue wait_queue;
-	// "alloc" data for wait queue
+	// 等待队列
 	int _wait_queue_data[WAIT_QUEUE_MAX_LENGTH];
 };
 
-struct condvar {
+struct cond {
 	struct queue wait_queue;
-	// "alloc" data for wait queue
+	// 等大队列
 	int _wait_queue_data[WAIT_QUEUE_MAX_LENGTH];
 };
 
 struct mutex *mutex_create(int blocking);
 void mutex_lock(struct mutex *);
 void mutex_unlock(struct mutex *);
-struct semaphore *semaphore_create(int count);
-void semaphore_up(struct semaphore *);
-void semaphore_down(struct semaphore *);
-struct condvar *condvar_create();
-void cond_signal(struct condvar *);
-void cond_wait(struct condvar *, struct mutex *);
+struct sema *sema_create(int count);
+void sema_V(struct sema *);
+void sema_P(struct sema *);
+struct cond *cond_create();
+void cond_notify(struct cond *);
+void cond_wait(struct cond *, struct mutex *);
 #endif
