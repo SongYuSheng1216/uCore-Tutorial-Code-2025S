@@ -6,6 +6,7 @@
 #include "syscall_ids.h"
 #include "timer.h"
 #include "trap.h"
+#include "proc.h"
 
 extern struct thread *sleep_queue_head;
 
@@ -205,6 +206,18 @@ uint64 sys_close(int fd)
 	return 0;
 }
 
+
+uint64 sys_set_priority(long long prio){
+	if(prio <= 1){
+		return -1;
+	}
+	struct thread *current_thread = curr_thread();
+	current_thread->prio.priority = prio;
+	//printf("priority : %d\n", prio);
+	current_thread->prio.base_priority = prio;
+	return prio;
+}
+
 int sys_thread_create(uint64 entry, uint64 arg)
 {
 	struct proc *p = curr_proc();
@@ -270,14 +283,6 @@ int sys_waittid(int tid)
 	return t->exit_code;	// 返回线程退出码
 }
 
-/*
-*	OPT: (3) In the TA's reference implementation, here defines funtion
-*					int deadlock_detect(const int available[LOCK_POOL_SIZE],
-*						const int allocation[NTHREAD][LOCK_POOL_SIZE],
-*						const int request[NTHREAD][LOCK_POOL_SIZE])
-*				for both mutex and sema detect, you can also
-*				use this idea or just ignore it.
-*/
 
 // 当多个请求到达时，它们会被放入一个等待队列，或者通过自旋锁/互斥锁保证一次只有一个线程进入银行家算法模块。
 // 一次只有一个线程进入该模块，那为什么要模拟是否能满足所有线程的需求
@@ -655,6 +660,9 @@ void syscall()
 		break;
 	case SYS_sleep:
 		ret = sys_sleep(args[0]);
+		break;
+	case SYS_setpriority:
+		ret = sys_set_priority(args[0]);
 		break;
 	default:
 		ret = -1;

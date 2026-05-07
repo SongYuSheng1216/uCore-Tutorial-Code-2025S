@@ -20,8 +20,10 @@ struct vma{
 };
 
 struct priority_proc{
+	uint64 base_priority;	// 本来的优先级
 	uint64 priority;
 	uint64 stride;
+	uint64 saved_stride;	// 用于死锁检测，记录被提升前的stride值
 };
 
 
@@ -58,6 +60,8 @@ struct thread {
 	struct context context; // swtch() here to run process
 	uint64 exit_code;
 	struct priority_proc prio;
+	struct mutex *waiting_for;	// 线程正在等待的锁
+
 	uint64 time_sleep; // 睡眠截止时间，单位为tick
 	struct thread* next_sleep; // 睡眠链表指针
 	struct thread* prev_sleep; // 睡眠链表指针

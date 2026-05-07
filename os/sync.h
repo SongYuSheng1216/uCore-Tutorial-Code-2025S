@@ -4,6 +4,8 @@
 #include "types.h"
 
 #define WAIT_QUEUE_MAX_LENGTH 16
+#define PIP
+//#define NONE_PIP
 
 struct mutex {
 	uint blocking;	// 表示是阻塞锁，还是自旋锁
@@ -13,6 +15,8 @@ struct mutex {
 // 注意：这里的_wait_queue_data只是为了给wait_queue提供一个静态的数组作为数据存储空间
 // 它用来存放那些因为拿不到锁而被阻塞的线程 ID（或者线程控制块的索引）。
 	int _wait_queue_data[WAIT_QUEUE_MAX_LENGTH];	
+
+	struct thread* owner;	// 哪个线程拿到了这把锁
 };
 
 struct sema {

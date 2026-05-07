@@ -117,6 +117,8 @@ void add_task(struct thread *t)
 
 	uint64 pass = 65536 / t->prio.priority;
 	t->prio.stride += pass;
+	// if(pass != 4096)
+	// 	printf("pass : %d\n", pass);
 	push_queue_prio(&task_queue, task_id, t->prio.stride);	// 所有和task_queue相关的都要检查
 }
 
@@ -216,7 +218,9 @@ found:
 	t->context.sp = t->kstack + KSTACK_SIZE;
 
 	t->prio.priority = 16;	// 默认优先级为1
-	t->prio.stride = 0;	// 初始pass值为0
+	t->prio.base_priority = 16;	// base_priority初始值和priority一样
+	t->prio.stride = get_queue_min_stride(&task_queue);	// 初始pass值为最小stride值
+	t->prio.saved_stride = 0;	// 初始saved_stride值为0
 
 	t->time_sleep = 0;	// 初始不睡眠
 	t->next_sleep = NULL;
